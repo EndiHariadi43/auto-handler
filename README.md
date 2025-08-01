@@ -33,6 +33,6 @@ This repository does **not handle any sensitive data**. All execution is perform
 
 ## 📬 Maintained by
 
-[EndiHariadi43] – Passionate about CI systems, log parsing, and performance testing automation.
+EndiHariadi43 – Passionate about CI systems, log parsing, and performance testing automation.
 
 License: MIT
