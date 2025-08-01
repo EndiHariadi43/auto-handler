@@ -49,7 +49,7 @@ jobs:
           sleep $WORKTIME
           kill $PID
 
-      - name: Notify Stats to Telegram
+      - name: Notify Done + Stats
         if: always()
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
