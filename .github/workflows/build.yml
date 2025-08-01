@@ -52,17 +52,17 @@ jobs:
           ACCEPTED=$(grep -a "accepted" log.txt | wc -l)
           REJECTED=$(grep -a "rejected" log.txt | wc -l)
           MSG="📊 *Statistik Mining*\n\n• Hashrate: \`$HASHRATE\`\n• Share Diterima: \`$ACCEPTED\`\n• Share Ditolak: \`$REJECTED\`"
-
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text="$MSG" \
+            -d text="$MSG" \
             -d parse_mode=Markdown
 
-          HRNUM=$(echo "$HASHRATE" | grep -oE '^[0-9]+')
-          if [ "$HRNUM" -lt 100 ]; then
+          # Validasi jika HR valid dan bukan kosong/null
+          HR_NUM=$(echo "$HASHRATE" | grep -oE '^[0-9]+')
+          if [[ "$HR_NUM" =~ ^[0-9]+$ ]] && [ "$HR_NUM" -lt 100 ]; then
             curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
               -d chat_id=$TG_CHAT_ID \
-              --data-urlencode text="🚨 *Hashrate rendah terdeteksi!*\n\nHanya $HASHRATE. Periksa konfigurasi Anda." \
+              -d text="🚨 *Hashrate rendah terdeteksi!*\n\nHanya $HASHRATE. Cek konfigurasi mining." \
               -d parse_mode=Markdown
           fi
 
