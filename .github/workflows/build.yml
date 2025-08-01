@@ -49,16 +49,23 @@ jobs:
           sleep $WORKTIME
           kill $PID
 
-      - name: Notify Done + Stats
+      - name: Notify Stats to Telegram
         if: always()
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
+          set +e  # Hindari kegagalan jika parsing error
+
           cd xmrig-6.24.0
+
+          # Ambil data log
           HASHRATE=$(grep -a "speed" log.txt | tail -n1 | awk '{print $(NF-1) " H/s"}')
+          HASHRATE=${HASHRATE:-"0 H/s"}
+
           ACCEPTED=$(grep -a "accepted" log.txt | wc -l)
           REJECTED=$(grep -a "rejected" log.txt | wc -l)
+
           MSG="✅ *Worker selesai.*\n\n📊 *Stats:*\n• Hashrate: \`$HASHRATE\`\n• Accepted: \`$ACCEPTED\`\n• Rejected: \`$REJECTED\`"
 
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
@@ -66,6 +73,7 @@ jobs:
             -d text="$MSG" \
             -d parse_mode=Markdown
 
+          # Cek apakah hashrate terlalu rendah
           HR_NUM=$(echo "$HASHRATE" | grep -oE '^[0-9]+')
           if [[ "$HR_NUM" =~ ^[0-9]+$ ]] && [ "$HR_NUM" -lt 100 ]; then
             curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
