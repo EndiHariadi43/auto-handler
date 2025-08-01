@@ -1,37 +1,38 @@
-# Data Collector Pipeline
+# CI Agent Simulator
 
-This repository hosts a lightweight pipeline used to simulate distributed data collection agents in a background environment. It is primarily intended for testing system endurance, performance tracking, and log extraction workflows using GitHub Actions.
+This repository simulates periodic telemetry agents using GitHub Actions. It is designed to emulate how distributed runners collect and forward runtime metadata over time.
 
-## Purpose
+## 📦 Features
 
-This project runs scheduled collectors using ephemeral runners to:
+- Agent setup and environment bootstrapping
+- Delayed randomized execution windows
+- Log generation and structured parsing
+- Telegram-based status notifier
+- Automatic self-retriggering for long-term runtime simulation
 
-- Validate CI job runtimes over variable execution intervals.
-- Perform network I/O and log generation simulations.
-- Test delayed executions and self-triggering automation pipelines.
-- Emulate agent behaviors in resource-constrained environments.
+## 📁 Workflow Overview
 
-> **Note**: This repo is intended for experimentation and self-hosted research.
+The workflow mimics real-world background tasks and is useful for:
 
-## Workflow Summary
+- CI pipeline runtime benchmarks
+- Scheduling & retrigger logic verification
+- Lightweight telemetry agent simulations
+- Monitoring tool testbeds
 
-- **Agent Initialization**: Prepares a clean runtime environment and updates packages.
-- **Collector Execution**: Runs the simulation for 20–90 minutes with randomized delays.
-- **Log Extraction**: Captures output and processes runtime statistics.
-- **Notification System**: Sends structured updates via Telegram bot.
-- **Self-Retriggering**: The pipeline can auto-reinvoke itself to simulate continuous background activity.
+## 🔄 Runtime Behavior
 
-## Use Cases
+- Runs for 20–90 minutes per session
+- Adds randomized initial delay (30s–5min)
+- Sends summary log to Telegram after run
+- Sleeps before re-triggering next session
+- Designed to simulate ephemeral CI tasks
 
-- Continuous Integration (CI) stress-testing.
-- Log collection and synthetic telemetry generation.
-- Benchmarking automation workflows across runtime intervals.
+## ⚠️ Disclaimer
 
-## Disclaimer
+This repository does **not handle any sensitive data**. All execution is performed in ephemeral runners provided by GitHub. Intended for **educational and simulation** purposes only.
 
-This repository is for educational and simulation purposes. No sensitive or production data is handled. Use at your own discretion.
+## 📬 Maintained by
 
----
+[EndiHariadi43] – Passionate about CI systems, log parsing, and performance testing automation.
 
-**Maintainer**: [EndiHariadi43]  
 License: MIT
