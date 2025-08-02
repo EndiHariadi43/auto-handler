@@ -2,7 +2,7 @@ name: Data Collector Pipeline
 
 on:
   schedule:
-    - cron: '0 0,12 * * *'  # Jam 00:00 dan 12:00 UTC
+    - cron: '0 0,12 * * *'  # Jam 07:00 dan 19:00 WIB
   workflow_dispatch:
 
 permissions:
