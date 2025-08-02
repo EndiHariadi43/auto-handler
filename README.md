@@ -12,4 +12,10 @@ Use only with proper authorization.
 - `data-collector.yml`: Measures CPU-bound loads with floating-point variance.
 - `bnb-collector.yml`: Measures randomized I/O-heavy operations.
 
+# node-core
+
+Internal processing scripts for multi-agent runtime handling.
+
+Do not modify.
+
 ---
