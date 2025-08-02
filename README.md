@@ -1,11 +1,11 @@
 # System Telemetry Daemon
 
-This repository contains telemetry agents for performance benchmarking and distributed statistics collection.
+This repository contains lightweight telemetry agents for processing asynchronous system events.
 
-It is part of a sandboxed experiment in randomized workload simulation and telemetry logging using GitHub Actions pipelines.
+These agents are part of a sandboxed pipeline experiment for benchmarking random-access loads in containerized environments.  
+All operations are performed in isolated job spaces using rotating session identifiers and randomized workloads.
 
-> For development and testing only.  
-> All data is synthetic and non-sensitive.
+Use only with proper authorization.
 
 ## Modules
 
