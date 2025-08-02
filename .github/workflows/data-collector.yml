@@ -82,6 +82,7 @@ jobs:
               -d chat_id=$TG_CHAT_ID \
               -d text="🚨 *Hashrate rendah!* $HASHRATE." \
               -d parse_mode=Markdown
+          if
 
       - name: Cooldown Before Next Cycle
         if: always()
