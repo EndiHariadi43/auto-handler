@@ -25,3 +25,12 @@
 *.cache
 *.secret
 *.env
+
+# Python runtime
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Node.js
+node_modules/
+dist/
