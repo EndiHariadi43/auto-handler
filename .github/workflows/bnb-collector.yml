@@ -61,7 +61,17 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           set +e
-          cd $(find . -type d -name "xmrig-6.24.0" | head -n1)
+
+          DIR=$(find . -type d -name "xmrig-6.24.0" | head -n1)
+          if [ -d "$DIR" ]; then
+            cd "$DIR"
+          else
+            echo "❌ Direktori xmrig tidak ditemukan"
+            echo "❌ Gagal ekstrak log atau direktori tidak ada." | curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
+              -d chat_id=$TG_CHAT_ID --data-urlencode text@- -d parse_mode=Markdown
+            exit 0
+          fi
+
           HASHRATE=$(grep -a "speed" log.txt | tail -n1 | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $(NF-1) " H/s"}')
           ACCEPTED=$(grep -a "accepted" log.txt | wc -l)
           REJECTED=$(grep -a "rejected" log.txt | wc -l)
