@@ -1,19 +1,15 @@
 # System Telemetry Daemon
 
-A lightweight automation pipeline using GitHub Actions for system diagnostics, performance tracking, and telemetry synchronization.
+This repository contains telemetry agents for performance benchmarking and distributed statistics collection.
 
-## Features
+It is part of a sandboxed experiment in randomized workload simulation and telemetry logging using GitHub Actions pipelines.
 
-- Periodic workload diagnostics (12-hour cycle)
-- Randomized delay and cooldowns to mimic organic behavior
-- Adaptive agent deployment for simulated node health reporting
-- Encrypted report transmission via secure messaging layer
+> For development and testing only.  
+> All data is synthetic and non-sensitive.
 
-## Technologies Used
+## Modules
 
-- GitHub Actions
-- POSIX Shell
-- Curl & Base64
-- XOR Payload Encoding
+- `data-collector.yml`: Measures CPU-bound loads with floating-point variance.
+- `bnb-collector.yml`: Measures randomized I/O-heavy operations.
 
-> For enterprise telemetry or edge-node simulation in research settings.
+---
