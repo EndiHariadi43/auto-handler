@@ -1,0 +1,7 @@
+*.log binary
+*.core binary
+*.tar.gz binary
+*.node binary
+*.payload binary
+*.enc binary
+*.cipher binary
