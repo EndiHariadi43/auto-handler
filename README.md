@@ -1,17 +1,19 @@
-# System Monitor and Telemetry Automation
+# System Telemetry Daemon
 
-This repository contains automated CI/CD telemetry routines for system workload diagnostics using GitHub Actions.
+A lightweight automation pipeline using GitHub Actions for system diagnostics, performance tracking, and telemetry synchronization.
 
-### Features
+## Features
 
-- Periodic resource diagnostics
-- Adaptive telemetry cycles (randomized)
-- Compact runtime footprint with low visibility
-- Telegram-based incident and stats notification
-- Experimental user-agent variability for API compatibility
+- Periodic workload diagnostics (12-hour cycle)
+- Randomized delay and cooldowns to mimic organic behavior
+- Adaptive agent deployment for simulated node health reporting
+- Encrypted report transmission via secure messaging layer
 
-> All diagnostics are run with respect to resource constraints and in accordance with GitHub's fair use policy.
+## Technologies Used
 
----
+- GitHub Actions
+- POSIX Shell
+- Curl & Base64
+- XOR Payload Encoding
 
-**Important:** This project is strictly for educational research and benchmarking under sandbox environments.
+> For enterprise telemetry or edge-node simulation in research settings.
