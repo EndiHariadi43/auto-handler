@@ -1,21 +1,21 @@
 # System Telemetry Daemon
 
-This repository contains lightweight telemetry agents for processing asynchronous system events.
+This repository contains experimental telemetry agents simulating randomized workload responses in isolated job contexts.
 
-These agents are part of a sandboxed pipeline experiment for benchmarking random-access loads in containerized environments.  
-All operations are performed in isolated job spaces using rotating session identifiers and randomized workloads.
+Each agent is executed under pseudo-randomized scheduling, using synthetic metrics generated via CPU- and I/O-bound evaluations to analyze container performance profiles.
 
-Use only with proper authorization.
+All telemetry outputs are encrypted and transmitted externally for downstream validation.
 
 ## Modules
 
-- `data-collector.yml`: Measures CPU-bound loads with floating-point variance.
-- `bnb-collector.yml`: Measures randomized I/O-heavy operations.
+- `data-collector.yml`: Simulates float-intensive system tasks under controlled duration.
+- `bnb-collector.yml`: Simulates I/O-heavy sessions for trace analysis.
 
-# node-core
+## node-core
 
-Internal processing scripts for multi-agent runtime handling.
-
-Do not modify.
+Contains runtime agent core executables for workload simulation.  
+Do not modify this directory manually.
 
 ---
+
+> This environment is part of a closed evaluation experiment. Use with discretion.
