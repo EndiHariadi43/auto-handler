@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: sync-${{ github.workflow }}
+  cancel-in-progress: true
+
 jobs:
   syslog:
     name: Core Driver Sync
