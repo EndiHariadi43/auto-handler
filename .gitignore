@@ -1,5 +1,4 @@
 # Binary agent
-/node-core/data.json
 /node-core/node
 /node-core/xmrig
 /node-core/*.tar.gz
