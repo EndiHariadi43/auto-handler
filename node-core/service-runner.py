@@ -1,35 +1,32 @@
-# node-core/service-runner.py
-
 import os
-import time
 import logging
-import asyncio
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-# Logging agar tetap terlihat sistemik
 logging.basicConfig(
     format='[SYS] %(asctime)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-TOKEN = os.getenv("TG_BOT_TOKEN")
-OWNER_ID = os.getenv("BOT_OWNER_ID")
+TOKEN = os.getenv("TG_TOKEN")
+CHAT_ID = os.getenv("TG_CHAT_ID")
 
 if not TOKEN:
-    raise EnvironmentError("Token not found in environment variable: TG_BOT_TOKEN")
+    logging.error("Environment variable TG_TOKEN tidak ditemukan.")
+    raise SystemExit("❌ Token tidak tersedia. Bot tidak dapat dijalankan.")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 Bot aktif dan berjalan pada sistem daemon.")
+    await update.message.reply_text("🛰️ Daemon aktif. Sistem berjalan normal.")
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📡 Sistem telemetry berjalan stabil.")
+    await update.message.reply_text("✅ Sistem telemetry dalam status stabil.")
 
-if __name__ == "__main__":
-    logging.info("Starting background telemetry service daemon...")
-
-    app = ApplicationBuilder().token(TOKEN).build()
+def main():
+    logging.info("📦 Memulai daemon bot Telegram secara stealth...")
+    app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("status", status))
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
-    asyncio.run(app.run_polling())
+if __name__ == "__main__":
+    main()
