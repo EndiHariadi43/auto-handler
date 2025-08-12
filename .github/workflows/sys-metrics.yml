@@ -1,26 +1,48 @@
-name: System Telemetry Daemon (Starter)
+name: System Telemetry Daemon
 
 on:
+  schedule:
+    - cron: '0 1,13 * * *'   # starter: 08:00 & 20:00 WIB
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: write     # perlu untuk workflow_dispatch dengan GITHUB_TOKEN
+
+concurrency:
+  group: sync-chain
+  cancel-in-progress: true
 
 jobs:
-  kick:
-    name: Trigger io-analyzer
+  syslog:
+    name: Core Driver Sync
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-      - name: Initialize Starter
-        run: echo "🚀 Memicu io-analyzer untuk memulai loop B&B ↔ B7C..."
+      - name: Initialize
+        run: echo "🔧 cycle starter..."
 
-      - name: Trigger io-analyzer
+      - name: Notify Boot
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
+            -d chat_id=$TG_CHAT_ID \
+            --data-urlencode text="🟢 *Cycle starter aktif.* Menyiapkan sesi berikutnya..." \
+            -d parse_mode=Markdown
+
+      - name: Random Warmup
+        run: sleep $((RANDOM % 90 + 30))
+
+      - name: Trigger Next (io-analyzer)
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           curl -s -X POST \
-               -H "Authorization: Bearer $GH_TOKEN" \
-               -H "Accept: application/vnd.github+json" \
-               https://api.github.com/repos/${{ github.repository }}/actions/workflows/io-analyzer.yml/dispatches \
-               -d '{"ref":"main"}'
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/io-analyzer.yml/dispatches \
+            -d '{"ref":"main"}'
