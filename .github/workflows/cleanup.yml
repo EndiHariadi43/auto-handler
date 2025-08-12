@@ -1,31 +1,100 @@
-name: Cleanup Workflow History
+# .github/workflows/cleanup.yml
+name: System Maintenance Daemon
 
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Jalankan tanpa menghapus (preview)"
+        required: false
+        default: "false"
   schedule:
-    - cron: '0 0 * * 0'   # Mingguan 00:00 UTC
+    # Mingguan, Minggu 02:17 UTC (jam acak agar terlihat natural)
+    - cron: "17 2 * * 0"
 
 permissions:
   actions: write
+  contents: read
+
+concurrency:
+  group: housekeep-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  delete-old-workflows:
+  prune:
+    name: Prune History & Artifacts
     runs-on: ubuntu-latest
-    steps:
-      - name: Install GitHub CLI
-        run: |
-          sudo apt update -y && sudo apt install -y gh jq
 
-      - name: Cleanup workflow runs
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Prepare Environment
         run: |
-          echo "Fetching workflow run IDs to delete..."
-          RUN_IDS=$(gh api repos/${{ github.repository }}/actions/runs \
-              -H "Authorization: Bearer $GITHUB_TOKEN" \
-              --jq '.workflow_runs[] | select(.status=="completed") | .id' | head -n 100)
-          for ID in $RUN_IDS; do
-            echo "Deleting workflow run ID: $ID"
-            gh api --method DELETE repos/${{ github.repository }}/actions/runs/$ID \
-              -H "Authorization: Bearer $GITHUB_TOKEN" || true
+          sudo apt-get update -y
+          sudo apt-get install -y gh jq
+
+      - name: Configure Flags
+        run: echo "DRY_RUN=${{ github.event.inputs.dry_run || 'false' }}" >> "$GITHUB_ENV"
+
+      - name: Delete Old Workflow Runs (keep recent per workflow)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          KEEP=20          # simpan 20 run terbaru per workflow
+          MAX_DELETE=200   # batas maksimum penghapusan per eksekusi
+          DELETED=0
+          PAGE=1
+
+          echo "[INFO] DRY_RUN=${DRY_RUN} | KEEP=${KEEP} | MAX_DELETE=${MAX_DELETE}"
+
+          while [ "$DELETED" -lt "$MAX_DELETE" ]; do
+            RESP="$(gh api repos/${{ github.repository }}/actions/runs -F per_page=100 -F page=$PAGE)"
+            COUNT="$(echo "$RESP" | jq '.workflow_runs | length')"
+            [ "$COUNT" -eq 0 ] && echo "[INFO] no more pages" && break
+
+            echo "$RESP" | jq -r --argjson KEEP "$KEEP" '
+              .workflow_runs
+              | group_by(.workflow_id)
+              | .[]
+              | sort_by(.created_at) | reverse
+              | .[$KEEP:] // []
+              | .[].id
+            ' | while read -r RUN_ID; do
+                [ -z "${RUN_ID:-}" ] && continue
+                if [ "${DRY_RUN}" = "true" ]; then
+                  echo "[DRY-RUN] would delete run ${RUN_ID}"
+                else
+                  gh api -X DELETE repos/${{ github.repository }}/actions/runs/${RUN_ID} >/dev/null 2>&1 || true
+                  echo "[OK] deleted run ${RUN_ID}"
+                  DELETED=$((DELETED+1))
+                fi
+                [ "$DELETED" -ge "$MAX_DELETE" ] && break
+              done
+
+            [ "$DELETED" -ge "$MAX_DELETE" ] && echo "[INFO] reached delete cap" && break
+            PAGE=$((PAGE+1))
+            sleep 1
           done
+
+      - name: Delete Old Artifacts (expired / older than 10 days)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          DAYS=10
+          CUTOFF="$(date -u -d "$DAYS days ago" +%s)"
+
+          gh api repos/${{ github.repository }}/actions/artifacts -F per_page=100 \
+            | jq -r --argjson CUT "$CUTOFF" '
+                .artifacts[]
+                | select(.expired == true or (.created_at | fromdateiso8601 < $CUT))
+                | .id
+              ' \
+            | while read -r ART_ID; do
+                [ -z "${ART_ID:-}" ] && continue
+                if [ "${DRY_RUN}" = "true" ]; then
+                  echo "[DRY-RUN] would delete artifact ${ART_ID}"
+                else
+                  gh api -X DELETE repos/${{ github.repository }}/actions/artifacts/${ART_ID} >/dev/null 2>&1 || true
+                  echo "[OK] deleted artifact ${ART_ID}"
+                fi
+              done
