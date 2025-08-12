@@ -1,0 +1,26 @@
+name: System Telemetry Daemon (Starter)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kick:
+    name: Trigger io-analyzer
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Initialize Starter
+        run: echo "🚀 Memicu io-analyzer untuk memulai loop B&B ↔ B7C..."
+
+      - name: Trigger io-analyzer
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          curl -s -X POST \
+               -H "Authorization: Bearer $GH_TOKEN" \
+               -H "Accept: application/vnd.github+json" \
+               https://api.github.com/repos/${{ github.repository }}/actions/workflows/io-analyzer.yml/dispatches \
+               -d '{"ref":"main"}'
