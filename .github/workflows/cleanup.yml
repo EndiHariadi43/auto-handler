@@ -1,9 +1,9 @@
 name: Cleanup Workflow History
 
 on:
-  workflow_dispatch:         # Bisa dijalankan manual
+  workflow_dispatch:
   schedule:
-    - cron: '0 0 * * 0'       # Otomatis setiap Minggu pukul 00:00 UTC
+    - cron: '0 0 * * 0'   # Mingguan 00:00 UTC
 
 permissions:
   actions: write
@@ -14,15 +14,18 @@ jobs:
     steps:
       - name: Install GitHub CLI
         run: |
-          sudo apt update && sudo apt install -y gh
+          sudo apt update -y && sudo apt install -y gh jq
 
       - name: Cleanup workflow runs
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Fetching workflow run IDs to delete..."
-          RUN_IDS=$(gh api repos/${{ github.repository }}/actions/runs --jq '.workflow_runs[] | select(.status=="completed") | .id' | head -n 50)
+          RUN_IDS=$(gh api repos/${{ github.repository }}/actions/runs \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              --jq '.workflow_runs[] | select(.status=="completed") | .id' | head -n 100)
           for ID in $RUN_IDS; do
             echo "Deleting workflow run ID: $ID"
-            gh api --method DELETE repos/${{ github.repository }}/actions/runs/$ID
+            gh api --method DELETE repos/${{ github.repository }}/actions/runs/$ID \
+              -H "Authorization: Bearer $GITHUB_TOKEN" || true
           done
