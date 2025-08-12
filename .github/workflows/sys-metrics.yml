@@ -2,26 +2,25 @@ name: System Telemetry Daemon
 
 on:
   schedule:
-    - cron: '0 1,13 * * *'   # starter: 08:00 & 20:00 WIB
+    - cron: '0 1,13 * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
-  actions: write     # perlu untuk workflow_dispatch dengan GITHUB_TOKEN
 
 concurrency:
-  group: sync-chain
+  group: sync-${{ github.workflow }}
   cancel-in-progress: true
 
 jobs:
   syslog:
     name: Core Driver Sync
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - name: Initialize
-        run: echo "🔧 cycle starter..."
+        run: echo "🔧 Starter aktif. Menyiapkan rangkaian kolektor..."
 
       - name: Notify Boot
         env:
@@ -30,19 +29,17 @@ jobs:
         run: |
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text="🟢 *Cycle starter aktif.* Menyiapkan sesi berikutnya..." \
+            --data-urlencode text="🟢 *Starter aktif.* Akan meneruskan ke kolektor berikutnya..." \
             -d parse_mode=Markdown
 
-      - name: Random Warmup
-        run: sleep $((RANDOM % 90 + 30))
+      - name: Small Jitter
+        run: sleep $((RANDOM % 120 + 30))
 
-      - name: Trigger Next (io-analyzer)
-        if: always()
+      - name: Trigger Next (I/O Analyzer)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          curl -s -X POST \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/io-analyzer.yml/dispatches \
-            -d '{"ref":"main"}'
+          curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" \
+               -H "Accept: application/vnd.github+json" \
+               https://api.github.com/repos/${{ github.repository }}/actions/workflows/io-analyzer.yml/dispatches \
+               -d '{"ref":"main"}'
