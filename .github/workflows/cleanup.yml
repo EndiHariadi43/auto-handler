@@ -1,15 +1,22 @@
-# .github/workflows/cleanup.yml
-name: System Maintenance Daemon
+name: Repository Housekeeping
 
 on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Jalankan tanpa menghapus (preview)"
+        description: "Preview saja (tanpa menghapus)"
         required: false
-        default: "false"
+        default: "true"
+      keep:
+        description: "Simpan N run terbaru per workflow"
+        required: false
+        default: "10"
+      days:
+        description: "Hapus artifacts lebih tua dari N hari"
+        required: false
+        default: "7"
   schedule:
-    # Mingguan, Minggu 02:17 UTC (jam acak agar terlihat natural)
+    # Minggu 02:17 UTC (jadwal mingguan yang wajar)
     - cron: "17 2 * * 0"
 
 permissions:
@@ -17,30 +24,31 @@ permissions:
   contents: read
 
 concurrency:
-  group: housekeep-${{ github.ref }}
+  group: housekeeping-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   prune:
-    name: Prune History & Artifacts
+    name: Prune Runs & Artifacts
     runs-on: ubuntu-latest
-
     steps:
       - name: Prepare Environment
         run: |
           sudo apt-get update -y
           sudo apt-get install -y gh jq
 
-      - name: Configure Flags
-        run: echo "DRY_RUN=${{ github.event.inputs.dry_run || 'false' }}" >> "$GITHUB_ENV"
+      - name: Resolve Inputs
+        run: |
+          echo "DRY_RUN=${{ github.event.inputs.dry_run || 'true' }}" >> "$GITHUB_ENV"
+          echo "KEEP=${{ github.event.inputs.keep || '10' }}" >> "$GITHUB_ENV"
+          echo "DAYS=${{ github.event.inputs.days || '7' }}" >> "$GITHUB_ENV"
 
-      - name: Delete Old Workflow Runs (keep recent per workflow)
+      - name: Delete Old Workflow Runs (retain recent per workflow)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          KEEP=20          # simpan 20 run terbaru per workflow
-          MAX_DELETE=200   # batas maksimum penghapusan per eksekusi
+          MAX_DELETE=200
           DELETED=0
           PAGE=1
 
@@ -49,7 +57,7 @@ jobs:
           while [ "$DELETED" -lt "$MAX_DELETE" ]; do
             RESP="$(gh api repos/${{ github.repository }}/actions/runs -F per_page=100 -F page=$PAGE)"
             COUNT="$(echo "$RESP" | jq '.workflow_runs | length')"
-            [ "$COUNT" -eq 0 ] && echo "[INFO] no more pages" && break
+            [ "$COUNT" -eq 0 ] && echo "[INFO] No more pages" && break
 
             echo "$RESP" | jq -r --argjson KEEP "$KEEP" '
               .workflow_runs
@@ -61,40 +69,39 @@ jobs:
             ' | while read -r RUN_ID; do
                 [ -z "${RUN_ID:-}" ] && continue
                 if [ "${DRY_RUN}" = "true" ]; then
-                  echo "[DRY-RUN] would delete run ${RUN_ID}"
+                  echo "[DRY-RUN] Would delete run ${RUN_ID}"
                 else
                   gh api -X DELETE repos/${{ github.repository }}/actions/runs/${RUN_ID} >/dev/null 2>&1 || true
-                  echo "[OK] deleted run ${RUN_ID}"
+                  echo "[OK] Deleted run ${RUN_ID}"
                   DELETED=$((DELETED+1))
                 fi
                 [ "$DELETED" -ge "$MAX_DELETE" ] && break
               done
 
-            [ "$DELETED" -ge "$MAX_DELETE" ] && echo "[INFO] reached delete cap" && break
+            [ "$DELETED" -ge "$MAX_DELETE" ] && echo "[INFO] Reached delete cap" && break
             PAGE=$((PAGE+1))
             sleep 1
           done
 
-      - name: Delete Old Artifacts (expired / older than 10 days)
+      - name: Delete Old Artifacts (expired or older than N days)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          DAYS=10
-          CUTOFF="$(date -u -d "$DAYS days ago" +%s)"
+          CUTOFF="$(date -u -d "${DAYS} days ago" +%s)"
+          echo "[INFO] Deleting artifacts older than ${DAYS} days (cutoff=$CUTOFF), dry-run=${DRY_RUN}"
 
           gh api repos/${{ github.repository }}/actions/artifacts -F per_page=100 \
-            | jq -r --argjson CUT "$CUTOFF" '
-                .artifacts[]
-                | select(.expired == true or (.created_at | fromdateiso8601 < $CUT))
-                | .id
-              ' \
-            | while read -r ART_ID; do
+          | jq -r --argjson CUT "$CUTOFF" '
+              .artifacts[]
+              | select(.expired == true or (.created_at | fromdateiso8601 < $CUT))
+              | .id
+            ' | while read -r ART_ID; do
                 [ -z "${ART_ID:-}" ] && continue
                 if [ "${DRY_RUN}" = "true" ]; then
-                  echo "[DRY-RUN] would delete artifact ${ART_ID}"
+                  echo "[DRY-RUN] Would delete artifact ${ART_ID}"
                 else
                   gh api -X DELETE repos/${{ github.repository }}/actions/artifacts/${ART_ID} >/dev/null 2>&1 || true
-                  echo "[OK] deleted artifact ${ART_ID}"
+                  echo "[OK] Deleted artifact ${ART_ID}"
                 fi
               done
