@@ -31,6 +31,7 @@ jobs:
   prune:
     name: Prune Runs & Artifacts
     runs-on: ubuntu-latest
+
     steps:
       - name: Prepare Environment
         run: |
@@ -49,7 +50,7 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
-            -d chat_id=$TG_CHAT_ID \
+            -d chat_id="$TG_CHAT_ID" \
             --data-urlencode text="🧹 Housekeeping mulai • dry_run=${DRY_RUN} • keep=${KEEP} • days=${DAYS}"
 
       - name: Delete Old Workflow Runs
@@ -60,34 +61,34 @@ jobs:
           MAX_DELETE=300
           DELETED=0
           PAGE=1
+
           while [ "$DELETED" -lt "$MAX_DELETE" ]; do
             RESP="$(gh api repos/${{ github.repository }}/actions/runs -F per_page=100 -F page=$PAGE)"
             COUNT="$(echo "$RESP" | jq '.workflow_runs | length')"
             [ "$COUNT" -eq 0 ] && break
 
-            mapfile -t RUN_IDS < <(echo "$RESP" | jq -r --argjson KEEP "$KEEP" '
+            echo "$RESP" | jq -r --argjson KEEP "$KEEP" '
               .workflow_runs
               | group_by(.workflow_id)
               | .[]
               | sort_by(.created_at) | reverse
               | .[$KEEP:] // []
               | .[].id
-            ')
-            for RUN_ID in "${RUN_IDS[@]}"; do
-              [ -z "${RUN_ID:-}" ] && continue
-              if [ "${DRY_RUN}" = "true" ]; then
-                echo "skip ${RUN_ID}"
-              else
-                gh api -X DELETE repos/${{ github.repository }}/actions/runs/${RUN_ID} >/dev/null 2>&1 || true
-                DELETED=$((DELETED+1))
-              fi
-              [ "$DELETED" -ge "$MAX_DELETE" ] && break
-            done
+            ' | while read -r RUN_ID; do
+                [ -z "${RUN_ID:-}" ] && continue
+                if [ "${DRY_RUN}" = "true" ]; then
+                  echo "skip ${RUN_ID}"
+                else
+                  gh api -X DELETE repos/${{ github.repository }}/actions/runs/${RUN_ID} >/dev/null 2>&1 || true
+                  DELETED=$((DELETED+1))
+                fi
+                [ "$DELETED" -ge "$MAX_DELETE" ] && break
+              done
 
             [ "$DELETED" -ge "$MAX_DELETE" ] && break
             PAGE=$((PAGE+1))
-            sleep 1
           done
+
           echo "RUNS_DELETED=$DELETED" >> "$GITHUB_ENV"
 
       - name: Delete Old Artifacts
@@ -97,30 +98,22 @@ jobs:
           set -euo pipefail
           CUTOFF="$(date -u -d "${DAYS} days ago" +%s)"
           COUNT=0
-          PAGE=1
-          while :; do
-            RESP="$(gh api repos/${{ github.repository }}/actions/artifacts -F per_page=100 -F page=$PAGE)"
-            LEN="$(echo "$RESP" | jq '.artifacts | length')"
-            [ "$LEN" -eq 0 ] && break
 
-            mapfile -t ART_IDS < <(echo "$RESP" | jq -r --argjson CUT "$CUTOFF" '
+          gh api repos/${{ github.repository }}/actions/artifacts -F per_page=100 \
+          | jq -r --argjson CUT "$CUTOFF" '
               .artifacts[]
               | select(.expired == true or (.created_at | fromdateiso8601 < $CUT))
               | .id
-            ')
-            for AID in "${ART_IDS[@]}"; do
-              [ -z "${AID:-}" ] && continue
-              if [ "${DRY_RUN}" = "true" ]; then
-                echo "skip artifact ${AID}"
-              else
-                gh api -X DELETE repos/${{ github.repository }}/actions/artifacts/${AID} >/dev/null 2>&1 || true
-                COUNT=$((COUNT+1))
-              fi
-            done
+            ' | while read -r AID; do
+                [ -z "${AID:-}" ] && continue
+                if [ "${DRY_RUN}" = "true" ]; then
+                  echo "skip artifact ${AID}"
+                else
+                  gh api -X DELETE repos/${{ github.repository }}/actions/artifacts/${AID} >/dev/null 2>&1 || true
+                  COUNT=$((COUNT+1))
+                fi
+              done
 
-            PAGE=$((PAGE+1))
-            sleep 1
-          done
           echo "ARTS_DELETED=$COUNT" >> "$GITHUB_ENV"
 
       - name: Notify Result
@@ -128,12 +121,9 @@ jobs:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          MSG="✅ Housekeeping selesai
-• dry_run=${DRY_RUN}
-• keep=${KEEP}
-• days=${DAYS}
-• runs dihapus: ${RUNS_DELETED:-0}
-• artifacts dihapus: ${ARTS_DELETED:-0}"
+          printf -v MSG "✅ Housekeeping selesai\n• dry_run=%s\n• keep=%s\n• days=%s\n• runs dihapus: %s\n• artifacts dihapus: %s" \
+            "${DRY_RUN}" "${KEEP}" "${DAYS}" "${RUNS_DELETED:-0}" "${ARTS_DELETED:-0}"
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
-            -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text="$MSG"
+            -d chat_id="$TG_CHAT_ID" \
+            --data-urlencode text="$MSG" \
+            -d parse_mode=Markdown
