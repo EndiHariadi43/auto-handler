@@ -6,18 +6,19 @@ on:
       dry_run:
         description: "Preview saja (tanpa menghapus)"
         required: false
-        default: "true"
+        default: "true"     # default aman: hanya pratinjau
       keep:
         description: "Simpan N run terbaru per workflow"
         required: false
-        default: "10"
+        default: "3"        # hemat tapi tidak kosong total
       days:
         description: "Hapus artifacts lebih tua dari N hari"
         required: false
-        default: "7"
+        default: "3"        # cepat bersih, tetap wajar
   schedule:
-    # Minggu 02:17 UTC (jadwal mingguan yang wajar)
+    # Minggu & Kamis 02:17 UTC (jarang dipakai, terlihat natural)
     - cron: "17 2 * * 0"
+    - cron: "17 2 * * 4"
 
 permissions:
   actions: write
@@ -31,6 +32,7 @@ jobs:
   prune:
     name: Prune Runs & Artifacts
     runs-on: ubuntu-latest
+
     steps:
       - name: Prepare Environment
         run: |
@@ -40,8 +42,8 @@ jobs:
       - name: Resolve Inputs
         run: |
           echo "DRY_RUN=${{ github.event.inputs.dry_run || 'true' }}" >> "$GITHUB_ENV"
-          echo "KEEP=${{ github.event.inputs.keep || '10' }}" >> "$GITHUB_ENV"
-          echo "DAYS=${{ github.event.inputs.days || '7' }}" >> "$GITHUB_ENV"
+          echo "KEEP=${{ github.event.inputs.keep || '3' }}" >> "$GITHUB_ENV"
+          echo "DAYS=${{ github.event.inputs.days || '3' }}" >> "$GITHUB_ENV"
 
       - name: Delete Old Workflow Runs (retain recent per workflow)
         env:
