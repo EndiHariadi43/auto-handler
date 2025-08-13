@@ -47,24 +47,22 @@ jobs:
       - name: Authenticate gh
         env:
           GH_TOKEN_FALLBACK: ${{ secrets.GH_TOKEN }}
-          GITHUB_TOKEN_BLT: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN_BLT: ${{ github.token }}
         run: |
           set -euo pipefail
-          TOKEN="${GH_TOKEN_FALLBACK:-}"
-          if [ -z "$TOKEN" ]; then
-            TOKEN="${GITHUB_TOKEN_BLT}"
-          fi
+          TOKEN="${GH_TOKEN_FALLBACK:-$GITHUB_TOKEN_BLT}"
           echo "$TOKEN" | gh auth login --with-token
           gh auth status
 
       - name: Notify Start
+        if: ${{ success() }}
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
-            -d chat_id="$TG_CHAT_ID" \
-            --data-urlencode text="🧹 Housekeeping mulai • dry_run=${DRY_RUN} • keep=${KEEP} • days=${DAYS}"
+          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -d chat_id="${TG_CHAT_ID}" \
+            --data-urlencode text="🧹 Housekeeping mulai — dry_run=${DRY_RUN}, keep=${KEEP}, days=${DAYS}"
 
       - name: Delete Old Workflow Runs
         run: |
@@ -120,16 +118,11 @@ jobs:
           echo "ARTS_DELETED=$COUNT" >> "$GITHUB_ENV"
 
       - name: Notify Result
+        if: ${{ always() }}
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          MSG="✅ Housekeeping selesai
-• dry_run=${DRY_RUN}
-• keep=${KEEP}
-• days=${DAYS}
-• runs dihapus: ${RUNS_DELETED:-0}
-• artifacts dihapus: ${ARTS_DELETED:-0}"
-          curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
-            -d chat_id="$TG_CHAT_ID" \
-            --data-urlencode text="$MSG"
+          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -d chat_id="${TG_CHAT_ID}" \
+            --data-urlencode text="✅ Housekeeping selesai — dry_run=${DRY_RUN}, keep=${KEEP}, days=${DAYS}, runs=${RUNS_DELETED:-0}, artifacts=${ARTS_DELETED:-0}"
