@@ -58,14 +58,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           MAX_DELETE=300
           DELETED=0
           PAGE=1
+
           while [ "$DELETED" -lt "$MAX_DELETE" ]; do
-            RESP="$(gh api repos/${{ github.repository }}/actions/runs -F per_page=100 -F page=$PAGE)"
+            RESP="$(gh api repos/${{ github.repository }}/actions/runs -F status=completed -F per_page=100 -F page=$PAGE)"
             COUNT="$(echo "$RESP" | jq '.workflow_runs | length')"
             [ "$COUNT" -eq 0 ] && break
+
             echo "$RESP" | jq -r --argjson KEEP "$KEEP" '
               .workflow_runs
               | group_by(.workflow_id)
@@ -78,16 +80,29 @@ jobs:
                 if [ "${DRY_RUN}" = "true" ]; then
                   echo "skip ${RUN_ID}"
                 else
-                  gh api -X DELETE repos/${{ github.repository }}/actions/runs/${RUN_ID} >/dev/null 2>&1 || true
-                  DELETED=$((DELETED+1))
+                  OUT="$(gh api -H "Accept: application/vnd.github+json" -X DELETE repos/${{ github.repository }}/actions/runs/${RUN_ID} 2>&1)"
+                  RC=$?
+                  if [ $RC -eq 0 ]; then
+                    DELETED=$((DELETED+1))
+                    echo "[OK] deleted ${RUN_ID}"
+                  else
+                    if echo "$OUT" | grep -q "404"; then
+                      echo "[SKIP] run ${RUN_ID} already gone (404)"
+                    else
+                      echo "[WARN] delete ${RUN_ID} failed (rc=$RC): $OUT"
+                    fi
+                  fi
                 fi
                 [ "$DELETED" -ge "$MAX_DELETE" ] && break
               done
+
             [ "$DELETED" -ge "$MAX_DELETE" ] && break
             PAGE=$((PAGE+1))
+            sleep 1
           done
-          echo "RUNS_DELETED=$DELETED" >> "$GITHUB_ENV"
 
+          echo "RUNS_DELETED=$DELETED" >> "$GITHUB_ENV"
+          
       - name: Delete Old Artifacts
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
