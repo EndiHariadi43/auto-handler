@@ -43,86 +43,136 @@ jobs:
           echo "DRY_RUN=${{ github.event.inputs.dry_run || 'true' }}" >> "$GITHUB_ENV"
           echo "KEEP=${{ github.event.inputs.keep || '3' }}" >> "$GITHUB_ENV"
           echo "DAYS=${{ github.event.inputs.days || '3' }}" >> "$GITHUB_ENV"
-
-      - name: Authenticate gh
-        env:
-          GH_TOKEN_FALLBACK: ${{ secrets.GH_TOKEN }}
-          GITHUB_TOKEN_BLT: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          TOKEN="${GH_TOKEN_FALLBACK:-$GITHUB_TOKEN_BLT}"
-          echo "$TOKEN" | gh auth login --with-token
-          gh auth status
+          echo "PREVIEW_FILE=$RUNNER_TEMP/cleanup_preview.txt" >> "$GITHUB_ENV"
+          : > "$RUNNER_TEMP/cleanup_preview.txt"
 
       - name: Notify Start
-        if: ${{ success() }}
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+          START_MSG="🧹 Housekeeping mulai
+Repo: ${{ github.repository }}
+Branch: ${{ github.ref_name }}
+dry_run=${DRY_RUN} • keep=${KEEP} • days=${DAYS}"
+          printf "%s" "$START_MSG" | curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
             -d chat_id="${TG_CHAT_ID}" \
-            --data-urlencode text="🧹 Housekeeping mulai — dry_run=${DRY_RUN}, keep=${KEEP}, days=${DAYS}"
+            --data-urlencode text@- >/dev/null
 
-      - name: Delete Old Workflow Runs
+      - name: Delete Old Workflow Runs (or preview)
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           set -euo pipefail
+
           MAX_DELETE=300
           DELETED=0
+          CAND=0
           PAGE=1
+
           while [ "$DELETED" -lt "$MAX_DELETE" ]; do
-            RESP="$(gh api repos/${{ github.repository }}/actions/runs -F per_page=100 -F page=$PAGE)"
-            COUNT="$(echo "$RESP" | jq '.workflow_runs | length')"
+            RESP="$(gh api repos/${{ github.repository }}/actions/runs -F per_page=100 -F page=$PAGE || echo '{}')"
+            COUNT="$(echo "$RESP" | jq '.workflow_runs | length // 0')"
             [ "$COUNT" -eq 0 ] && break
+
             echo "$RESP" | jq -r --argjson KEEP "$KEEP" '
               .workflow_runs
               | group_by(.workflow_id)
               | .[]
               | sort_by(.created_at) | reverse
               | .[$KEEP:] // []
-              | .[].id
-            ' | while read -r RUN_ID; do
-                [ -z "${RUN_ID:-}" ] && continue
+              | .[]
+              | @base64
+            ' | while read -r B64; do
+                J='. | fromjson'
+                ID=$(echo "$B64" | base64 -d | jq -r "$J | .id")
+                NAME=$(echo "$B64" | base64 -d | jq -r "$J | .name")
+                BR=$(echo "$B64" | base64 -d | jq -r "$J | .head_branch")
+                AT=$(echo "$B64" | base64 -d | jq -r "$J | .created_at")
+                CAND=$((CAND+1))
                 if [ "${DRY_RUN}" = "true" ]; then
-                  echo "skip ${RUN_ID}"
+                  if [ "$CAND" -le 40 ]; then
+                    echo "[RUN] id=${ID} • ${NAME} • ${BR} • ${AT}" >> "$PREVIEW_FILE"
+                  fi
                 else
-                  gh api -X DELETE repos/${{ github.repository }}/actions/runs/${RUN_ID} >/dev/null 2>&1 || true
+                  gh api -X DELETE "repos/${{ github.repository }}/actions/runs/${ID}" >/dev/null 2>&1 || true
                   DELETED=$((DELETED+1))
                 fi
                 [ "$DELETED" -ge "$MAX_DELETE" ] && break
               done
+
             [ "$DELETED" -ge "$MAX_DELETE" ] && break
             PAGE=$((PAGE+1))
+            sleep 1
           done
-          echo "RUNS_DELETED=$DELETED" >> "$GITHUB_ENV"
 
-      - name: Delete Old Artifacts
+          echo "RUNS_DELETED=$DELETED" >> "$GITHUB_ENV"
+          echo "RUNS_CANDIDATES=$CAND" >> "$GITHUB_ENV"
+
+      - name: Delete Old Artifacts (or preview)
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           set -euo pipefail
+
           CUTOFF="$(date -u -d "${DAYS} days ago" +%s)"
-          COUNT=0
-          gh api repos/${{ github.repository }}/actions/artifacts -F per_page=100 \
+          DEL=0
+          CAND=0
+
+          gh api "repos/${{ github.repository }}/actions/artifacts" -F per_page=100 \
           | jq -r --argjson CUT "$CUTOFF" '
               .artifacts[]
               | select(.expired == true or (.created_at | fromdateiso8601 < $CUT))
-              | .id
-            ' | while read -r AID; do
-                [ -z "${AID:-}" ] && continue
+              | @base64
+            ' | while read -r B64; do
+                J='. | fromjson'
+                ID=$(echo "$B64" | base64 -d | jq -r "$J | .id")
+                NM=$(echo "$B64" | base64 -d | jq -r "$J | .name")
+                AT=$(echo "$B64" | base64 -d | jq -r "$J | .created_at")
+                CAND=$((CAND+1))
                 if [ "${DRY_RUN}" = "true" ]; then
-                  echo "skip artifact ${AID}"
+                  if [ "$CAND" -le 40 ]; then
+                    echo "[ART] id=${ID} • ${NM} • ${AT}" >> "$PREVIEW_FILE"
+                  fi
                 else
-                  gh api -X DELETE repos/${{ github.repository }}/actions/artifacts/${AID} >/dev/null 2>&1 || true
-                  COUNT=$((COUNT+1))
+                  gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/${ID}" >/dev/null 2>&1 || true
+                  DEL=$((DEL+1))
                 fi
               done
-          echo "ARTS_DELETED=$COUNT" >> "$GITHUB_ENV"
 
-      - name: Notify Result
-        if: ${{ always() }}
+          echo "ARTS_DELETED=$DEL" >> "$GITHUB_ENV"
+          echo "ARTS_CANDIDATES=$CAND" >> "$GITHUB_ENV"
+
+      - name: Notify Result (Telegram)
+        if: always()
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+          set -euo pipefail
+          if [ "${DRY_RUN}" = "true" ]; then
+            PREVIEW_HEAD="$(head -n 40 "$PREVIEW_FILE" || true)"
+            MSG="🔎 Housekeeping preview selesai
+Repo: ${{ github.repository }}
+dry_run=${DRY_RUN} • keep=${KEEP} • days=${DAYS}
+Calon dihapus:
+• runs: ${RUNS_CANDIDATES:-0}
+• artifacts: ${ARTS_CANDIDATES:-0}
+
+Contoh entri:
+\`\`\`
+${PREVIEW_HEAD:-(tidak ada kandidat)}
+\`\`\`"
+          else
+            MSG="✅ Housekeeping selesai
+Repo: ${{ github.repository }}
+dry_run=${DRY_RUN} • keep=${KEEP} • days=${DAYS}
+Terhapus:
+• runs: ${RUNS_DELETED:-0}
+• artifacts: ${ARTS_DELETED:-0}"
+          fi
+
+          printf "%s" "$MSG" | curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
             -d chat_id="${TG_CHAT_ID}" \
-            --data-urlencode text="✅ Housekeeping selesai — dry_run=${DRY_RUN}, keep=${KEEP}, days=${DAYS}, runs=${RUNS_DELETED:-0}, artifacts=${ARTS_DELETED:-0}"
+            --data-urlencode text@- \
+            -d parse_mode=Markdown >/dev/null
