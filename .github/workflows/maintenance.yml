@@ -1,12 +1,10 @@
-name: System Maintenance
+name: Repository Housekeeping
 
 on:
-  repository_dispatch:
-    types: [housekeeping]
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Preview (tanpa menghapus)"
+        description: "Preview saja (tanpa menghapus)"
         required: false
         default: "false"
       keep:
@@ -20,53 +18,69 @@ on:
   schedule:
     - cron: "17 2 * * 0"
     - cron: "17 2 * * 4"
+  repository_dispatch:
+    types: [housekeeping]
 
 permissions:
   actions: write
   contents: read
 
 concurrency:
-  group: maintenance-${{ github.ref }}
+  group: housekeeping-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  cleanup:
-    name: Log Rotation
+  prune:
+    name: Prune Runs & Artifacts
     runs-on: ubuntu-latest
+
     steps:
-      - name: Prepare
+      - name: Prepare Environment
         run: |
           sudo apt-get update -y
           sudo apt-get install -y gh jq
 
       - name: Resolve Inputs
+        env:
+          IN_DRY: ${{ github.event.inputs.dry_run }}
+          IN_KEEP: ${{ github.event.inputs.keep }}
+          IN_DAYS: ${{ github.event.inputs.days }}
+          DP_DRY: ${{ github.event.client_payload.dry_run }}
+          DP_KEEP: ${{ github.event.client_payload.keep }}
+          DP_DAYS: ${{ github.event.client_payload.days }}
         run: |
-          echo "DRY_RUN=${{ github.event.client_payload.dry_run || github.event.inputs.dry_run || 'false' }}" >> "$GITHUB_ENV"
-          echo "KEEP=${{ github.event.client_payload.keep || github.event.inputs.keep || '2' }}" >> "$GITHUB_ENV"
-          echo "DAYS=${{ github.event.client_payload.days || github.event.inputs.days || '2' }}" >> "$GITHUB_ENV"
-          echo "SOURCE=${{ github.event.client_payload.source || 'scheduled' }}" >> "$GITHUB_ENV"
+          set -e
+          DRY_RUN="${IN_DRY:-${DP_DRY:-false}}"
+          KEEP="${IN_KEEP:-${DP_KEEP:-2}}"
+          DAYS="${IN_DAYS:-${DP_DAYS:-2}}"
+          echo "DRY_RUN=$DRY_RUN" >> "$GITHUB_ENV"
+          echo "KEEP=$KEEP" >> "$GITHUB_ENV"
+          echo "DAYS=$DAYS" >> "$GITHUB_ENV"
 
       - name: Notify Start
-        if: ${{ secrets.TG_TOKEN && secrets.TG_CHAT_ID }}
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          MSG=$'System maintenance started\nRepo: ${{ github.repository }}\nFrom: '"${SOURCE}"$'\nkeep='"${KEEP}"$' • days='"${DAYS}"$' • dry_run='"${DRY_RUN}"
-          printf "%s" "$MSG" | curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
-            -d chat_id="${TG_CHAT_ID}" --data-urlencode text@- >/dev/null
+          if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT_ID:-}" ]; then
+            START_MSG=$'🧹 Housekeeping mulai\nRepo: '"${{ github.repository }}"$'\nBranch: '"${{ github.ref_name }}"$'\ndry_run='"${DRY_RUN}"' • keep='"${KEEP}"' • days='"${DAYS}"
+            printf "%s" "$START_MSG" | curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+              -d chat_id="${TG_CHAT_ID}" \
+              --data-urlencode text@- >/dev/null
+          fi
 
-      - name: Rotate Runs
+      - name: Delete Old Workflow Runs
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set +e
-          MAX_DELETE=200
+          MAX_DELETE=300
           DELETED=0
           PAGE=1
           while [ "$DELETED" -lt "$MAX_DELETE" ]; do
-            RESP="$(gh api "repos/${{ github.repository }}/actions/runs" -F status=completed -F per_page=100 -F page="$PAGE" 2>/dev/null)" || break
-            COUNT="$(echo "$RESP" | jq '(.workflow_runs // []) | length')" || break
+            RESP="$(gh api "repos/${{ github.repository }}/actions/runs" -F status=completed -F per_page=100 -F page="$PAGE" 2>/dev/null)"
+            [ -z "$RESP" ] && break
+            COUNT="$(echo "$RESP" | jq '(.workflow_runs // []) | length')"
             [ "$COUNT" -eq 0 ] && break
             echo "$RESP" | jq -r --argjson KEEP "${KEEP:-2}" '
               (.workflow_runs // [])
@@ -76,22 +90,23 @@ jobs:
               | .[$KEEP:] // []
               | .[].id
             ' | while read -r RUN_ID; do
-              [ -z "$RUN_ID" ] && continue
-              if [ "${DRY_RUN}" = "true" ]; then
-                echo "[DRY] keep -> $RUN_ID"
-              else
-                gh api -X DELETE "repos/${{ github.repository }}/actions/runs/${RUN_ID}" >/dev/null 2>&1 || true
-                DELETED=$((DELETED+1))
-              fi
-              [ "$DELETED" -ge "$MAX_DELETE" ] && break
-            done
+                [ -z "${RUN_ID:-}" ] && continue
+                if [ "${DRY_RUN}" = "true" ]; then
+                  echo "[DRY-RUN] skip ${RUN_ID}"
+                else
+                  gh api -H "Accept: application/vnd.github+json" -X DELETE "repos/${{ github.repository }}/actions/runs/${RUN_ID}" >/dev/null 2>&1
+                  [ $? -eq 0 ] && { DELETED=$((DELETED+1)); echo "[OK] deleted ${RUN_ID}"; } || echo "[SKIP] cannot delete ${RUN_ID}"
+                fi
+                [ "$DELETED" -ge "$MAX_DELETE" ] && break
+              done
             [ "$DELETED" -ge "$MAX_DELETE" ] && break
             PAGE=$((PAGE+1))
             sleep 1
           done
           echo "RUNS_DELETED=$DELETED" >> "$GITHUB_ENV"
+          exit 0
 
-      - name: Rotate Artifacts
+      - name: Delete Old Artifacts
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -103,24 +118,26 @@ jobs:
               (.artifacts // [])
               | map(select(.expired == true or (.created_at | fromdateiso8601 < $CUT)))
               | .[].id
-            ' \
-          | while read -r AID; do
-              [ -z "$AID" ] && continue
-              if [ "${DRY_RUN}" = "true" ]; then
-                echo "[DRY] keep artifact -> $AID"
-              else
-                gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/${AID}" >/dev/null 2>&1 || true
-                COUNT=$((COUNT+1))
-              fi
-            done
+            ' | while read -r AID; do
+                [ -z "${AID:-}" ] && continue
+                if [ "${DRY_RUN}" = "true" ]; then
+                  echo "[DRY-RUN] skip artifact ${AID}"
+                else
+                  gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/${AID}" >/dev/null 2>&1 || true
+                  COUNT=$((COUNT+1))
+                fi
+              done
           echo "ARTS_DELETED=$COUNT" >> "$GITHUB_ENV"
+          exit 0
 
-      - name: Notify Done
-        if: ${{ secrets.TG_TOKEN && secrets.TG_CHAT_ID }}
+      - name: Notify Result
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          MSG=$'System maintenance done\nruns purged: '"${RUNS_DELETED:-0}"$'\nartifacts purged: '"${ARTS_DELETED:-0}"
-          printf "%s" "$MSG" | curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
-            -d chat_id="${TG_CHAT_ID}" --data-urlencode text@- >/dev/null
+          if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT_ID:-}" ]; then
+            MSG=$'✅ Housekeeping selesai\n• dry_run='"${DRY_RUN}"$'\n• keep='"${KEEP}"$'\n• days='"${DAYS}"$'\n• runs dihapus: '"${RUNS_DELETED:-0}"$'\n• artifacts dihapus: '"${ARTS_DELETED:-0}"
+            printf "%s" "$MSG" | curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+              -d chat_id="${TG_CHAT_ID}" \
+              --data-urlencode text@- >/dev/null
+          fi
