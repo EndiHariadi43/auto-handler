@@ -49,13 +49,11 @@ jobs:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          START_MSG=$'🧹 Housekeeping mulai\nRepo: ${{ github.repository }}\nBranch: ${{ github.ref_name }}\ndry_run='"${DRY_RUN}"' • keep='"${KEEP}"' • days='"${DAYS}"
+          START_MSG=$'🧹 Housekeeping mulai\nRepo: ${{ github.repository }}\nBranch: ${{ github.ref_name }}\ndry_run='"${DRY_RUN}"' • keep='"${KEEP}"' • days='"${DAYS}"''
           printf "%s" "$START_MSG" | curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
             -d chat_id="${TG_CHAT_ID}" \
             --data-urlencode text@- >/dev/null
 
-      - name: Delete Old Workflow Runs
-        env:
       - name: Delete Old Workflow Runs
         env:
           GH_TOKEN: ${{ github.token }}
@@ -82,8 +80,7 @@ jobs:
                 if [ "${DRY_RUN}" = "true" ]; then
                   echo "[DRY-RUN] skip ${RUN_ID}"
                 else
-                  # 404 → sudah terhapus/akses terbatas; jangan hentikan job
-                  if gh api -H "Accept: application/vnd.github+json" -X DELETE repos/${{ github.repository }}/actions/runs/${RUN_ID} >/dev/null 2>&1; then
+                  if gh api -H "Accept: application/vnd.github+json" -X DELETE "repos/${{ github.repository }}/actions/runs/${RUN_ID}" >/dev/null 2>&1; then
                     DELETED=$((DELETED+1))
                     echo "[OK] deleted ${RUN_ID}"
                   else
@@ -99,15 +96,15 @@ jobs:
           done
 
           echo "RUNS_DELETED=$DELETED" >> "$GITHUB_ENV"
-          
+
       - name: Delete Old Artifacts
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           CUTOFF="$(date -u -d "${DAYS} days ago" +%s)"
           COUNT=0
-          gh api repos/${{ github.repository }}/actions/artifacts -F per_page=100 \
+          gh api "repos/${{ github.repository }}/actions/artifacts" -F per_page=100 \
           | jq -r --argjson CUT "$CUTOFF" '
               .artifacts[]
               | select(.expired == true or (.created_at | fromdateiso8601 < $CUT))
@@ -115,9 +112,9 @@ jobs:
             ' | while read -r AID; do
                 [ -z "${AID:-}" ] && continue
                 if [ "${DRY_RUN}" = "true" ]; then
-                  echo "skip artifact ${AID}"
+                  echo "[DRY-RUN] skip artifact ${AID}"
                 else
-                  gh api -X DELETE repos/${{ github.repository }}/actions/artifacts/${AID} >/dev/null 2>&1 || true
+                  gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/${AID}" >/dev/null 2>&1 || true
                   COUNT=$((COUNT+1))
                 fi
               done
@@ -128,8 +125,7 @@ jobs:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          MSG=$'✅ Housekeeping selesai\n• dry_run='"${DRY_RUN}"$'\n• keep='"${KEEP}"$'\n• days='"${DAYS}"$'\n• runs dihapus: '"${RUNS_DELETED:-0}"$'\n• artifacts dihapus: '"${ARTS_DELETED:-0}"
+          MSG=$'✅ Housekeeping selesai\n• dry_run='"${DRY_RUN}"$'\n• keep='"${KEEP}"$'\n• days='"${DAYS}"$'\n• runs dihapus: '"${RUNS_DELETED:-0}"$'\n• artifacts dihapus: '""${ARTS_DELETED:-0}"
           printf "%s" "$MSG" | curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
             -d chat_id="${TG_CHAT_ID}" \
-            --data-urlencode text@- \
-            -d parse_mode=Markdown >/dev/null
+            --data-urlencode text@- >/dev/null
