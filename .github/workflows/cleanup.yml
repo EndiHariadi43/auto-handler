@@ -56,9 +56,11 @@ jobs:
 
       - name: Delete Old Workflow Runs
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      - name: Delete Old Workflow Runs
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -uo pipefail
+          set -u
           MAX_DELETE=300
           DELETED=0
           PAGE=1
@@ -78,19 +80,14 @@ jobs:
             ' | while read -r RUN_ID; do
                 [ -z "${RUN_ID:-}" ] && continue
                 if [ "${DRY_RUN}" = "true" ]; then
-                  echo "skip ${RUN_ID}"
+                  echo "[DRY-RUN] skip ${RUN_ID}"
                 else
-                  OUT="$(gh api -H "Accept: application/vnd.github+json" -X DELETE repos/${{ github.repository }}/actions/runs/${RUN_ID} 2>&1)"
-                  RC=$?
-                  if [ $RC -eq 0 ]; then
+                  # 404 → sudah terhapus/akses terbatas; jangan hentikan job
+                  if gh api -H "Accept: application/vnd.github+json" -X DELETE repos/${{ github.repository }}/actions/runs/${RUN_ID} >/dev/null 2>&1; then
                     DELETED=$((DELETED+1))
                     echo "[OK] deleted ${RUN_ID}"
                   else
-                    if echo "$OUT" | grep -q "404"; then
-                      echo "[SKIP] run ${RUN_ID} already gone (404)"
-                    else
-                      echo "[WARN] delete ${RUN_ID} failed (rc=$RC): $OUT"
-                    fi
+                    echo "[SKIP] cannot delete ${RUN_ID} (maybe 404/permission)"
                   fi
                 fi
                 [ "$DELETED" -ge "$MAX_DELETE" ] && break
