@@ -16,7 +16,6 @@ on:
         required: false
         default: "3"
   schedule:
-    # Minggu & Kamis 02:17 UTC (jarang dipakai, terlihat natural)
     - cron: "17 2 * * 0"
     - cron: "17 2 * * 4"
 
@@ -41,7 +40,11 @@ jobs:
 
       - name: Resolve Inputs
         run: |
-          echo "DRY_RUN=${{ github.event.inputs.dry_run || 'true' }}" >> "$GITHUB_ENV"
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "DRY_RUN=false" >> "$GITHUB_ENV"
+          else
+            echo "DRY_RUN=${{ github.event.inputs.dry_run || 'true' }}" >> "$GITHUB_ENV"
+          fi
           echo "KEEP=${{ github.event.inputs.keep || '3' }}" >> "$GITHUB_ENV"
           echo "DAYS=${{ github.event.inputs.days || '3' }}" >> "$GITHUB_ENV"
 
@@ -53,14 +56,10 @@ jobs:
           MAX_DELETE=200
           DELETED=0
           PAGE=1
-
-          echo "[INFO] DRY_RUN=${DRY_RUN} | KEEP=${KEEP} | MAX_DELETE=${MAX_DELETE}"
-
           while [ "$DELETED" -lt "$MAX_DELETE" ]; do
             RESP="$(gh api repos/${{ github.repository }}/actions/runs -F per_page=100 -F page=$PAGE)"
             COUNT="$(echo "$RESP" | jq '.workflow_runs | length')"
-            [ "$COUNT" -eq 0 ] && echo "[INFO] No more pages" && break
-
+            [ "$COUNT" -eq 0 ] && break
             echo "$RESP" | jq -r --argjson KEEP "$KEEP" '
               .workflow_runs
               | group_by(.workflow_id)
@@ -74,13 +73,11 @@ jobs:
                   echo "[DRY-RUN] Would delete run ${RUN_ID}"
                 else
                   gh api -X DELETE repos/${{ github.repository }}/actions/runs/${RUN_ID} >/dev/null 2>&1 || true
-                  echo "[OK] Deleted run ${RUN_ID}"
                   DELETED=$((DELETED+1))
                 fi
                 [ "$DELETED" -ge "$MAX_DELETE" ] && break
               done
-
-            [ "$DELETED" -ge "$MAX_DELETE" ] && echo "[INFO] Reached delete cap" && break
+            [ "$DELETED" -ge "$MAX_DELETE" ] && break
             PAGE=$((PAGE+1))
             sleep 1
           done
@@ -91,10 +88,12 @@ jobs:
         run: |
           set -euo pipefail
           CUTOFF="$(date -u -d "${DAYS} days ago" +%s)"
-          echo "[INFO] Deleting artifacts older than ${DAYS} days (cutoff=$CUTOFF), dry-run=${DRY_RUN}"
-
-          gh api repos/${{ github.repository }}/actions/artifacts -F per_page=100 \
-          | jq -r --argjson CUT "$CUTOFF" '
+          PAGE=1
+          while :; do
+            RESP="$(gh api repos/${{ github.repository }}/actions/artifacts -F per_page=100 -F page=$PAGE)"
+            COUNT="$(echo "$RESP" | jq '.artifacts | length')"
+            [ "$COUNT" -eq 0 ] && break
+            echo "$RESP" | jq -r --argjson CUT "$CUTOFF" '
               .artifacts[]
               | select(.expired == true or (.created_at | fromdateiso8601 < $CUT))
               | .id
@@ -104,6 +103,8 @@ jobs:
                   echo "[DRY-RUN] Would delete artifact ${ART_ID}"
                 else
                   gh api -X DELETE repos/${{ github.repository }}/actions/artifacts/${ART_ID} >/dev/null 2>&1 || true
-                  echo "[OK] Deleted artifact ${ART_ID}"
                 fi
               done
+            PAGE=$((PAGE+1))
+            sleep 1
+          done
