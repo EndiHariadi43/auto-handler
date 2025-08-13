@@ -6,15 +6,15 @@ on:
       dry_run:
         description: "Preview saja (tanpa menghapus)"
         required: false
-        default: "false"
+        default: "true"
       keep:
         description: "Simpan N run terbaru per workflow"
         required: false
-        default: "2"
+        default: "3"
       days:
         description: "Hapus artifacts lebih tua dari N hari"
         required: false
-        default: "2"
+        default: "3"
   schedule:
     - cron: "17 2 * * 0"
     - cron: "17 2 * * 4"
@@ -40,9 +40,22 @@ jobs:
 
       - name: Resolve Inputs
         run: |
-          echo "DRY_RUN=${{ github.event.inputs.dry_run || 'false' }}" >> "$GITHUB_ENV"
-          echo "KEEP=${{ github.event.inputs.keep || '2' }}" >> "$GITHUB_ENV"
-          echo "DAYS=${{ github.event.inputs.days || '2' }}" >> "$GITHUB_ENV"
+          echo "DRY_RUN=${{ github.event.inputs.dry_run || 'true' }}" >> "$GITHUB_ENV"
+          echo "KEEP=${{ github.event.inputs.keep || '3' }}" >> "$GITHUB_ENV"
+          echo "DAYS=${{ github.event.inputs.days || '3' }}" >> "$GITHUB_ENV"
+
+      - name: Authenticate gh
+        env:
+          GH_TOKEN_FALLBACK: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN_BLT: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TOKEN="${GH_TOKEN_FALLBACK:-}"
+          if [ -z "$TOKEN" ]; then
+            TOKEN="${GITHUB_TOKEN_BLT}"
+          fi
+          echo "$TOKEN" | gh auth login --with-token
+          gh auth status
 
       - name: Notify Start
         env:
@@ -54,19 +67,15 @@ jobs:
             --data-urlencode text="🧹 Housekeeping mulai • dry_run=${DRY_RUN} • keep=${KEEP} • days=${DAYS}"
 
       - name: Delete Old Workflow Runs
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           set -euo pipefail
           MAX_DELETE=300
           DELETED=0
           PAGE=1
-
           while [ "$DELETED" -lt "$MAX_DELETE" ]; do
             RESP="$(gh api repos/${{ github.repository }}/actions/runs -F per_page=100 -F page=$PAGE)"
             COUNT="$(echo "$RESP" | jq '.workflow_runs | length')"
             [ "$COUNT" -eq 0 ] && break
-
             echo "$RESP" | jq -r --argjson KEEP "$KEEP" '
               .workflow_runs
               | group_by(.workflow_id)
@@ -84,21 +93,16 @@ jobs:
                 fi
                 [ "$DELETED" -ge "$MAX_DELETE" ] && break
               done
-
             [ "$DELETED" -ge "$MAX_DELETE" ] && break
             PAGE=$((PAGE+1))
           done
-
           echo "RUNS_DELETED=$DELETED" >> "$GITHUB_ENV"
 
       - name: Delete Old Artifacts
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           set -euo pipefail
           CUTOFF="$(date -u -d "${DAYS} days ago" +%s)"
           COUNT=0
-
           gh api repos/${{ github.repository }}/actions/artifacts -F per_page=100 \
           | jq -r --argjson CUT "$CUTOFF" '
               .artifacts[]
@@ -113,7 +117,6 @@ jobs:
                   COUNT=$((COUNT+1))
                 fi
               done
-
           echo "ARTS_DELETED=$COUNT" >> "$GITHUB_ENV"
 
       - name: Notify Result
@@ -121,9 +124,12 @@ jobs:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          printf -v MSG "✅ Housekeeping selesai\n• dry_run=%s\n• keep=%s\n• days=%s\n• runs dihapus: %s\n• artifacts dihapus: %s" \
-            "${DRY_RUN}" "${KEEP}" "${DAYS}" "${RUNS_DELETED:-0}" "${ARTS_DELETED:-0}"
+          MSG="✅ Housekeeping selesai
+• dry_run=${DRY_RUN}
+• keep=${KEEP}
+• days=${DAYS}
+• runs dihapus: ${RUNS_DELETED:-0}
+• artifacts dihapus: ${ARTS_DELETED:-0}"
           curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
             -d chat_id="$TG_CHAT_ID" \
-            --data-urlencode text="$MSG" \
-            -d parse_mode=Markdown
+            --data-urlencode text="$MSG"
