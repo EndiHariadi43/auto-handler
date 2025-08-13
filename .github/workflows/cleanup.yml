@@ -6,15 +6,15 @@ on:
       dry_run:
         description: "Preview saja (tanpa menghapus)"
         required: false
-        default: "true"     # default aman: hanya pratinjau
+        default: "true"
       keep:
         description: "Simpan N run terbaru per workflow"
         required: false
-        default: "3"        # hemat tapi tidak kosong total
+        default: "3"
       days:
         description: "Hapus artifacts lebih tua dari N hari"
         required: false
-        default: "3"        # cepat bersih, tetap wajar
+        default: "3"
   schedule:
     # Minggu & Kamis 02:17 UTC (jarang dipakai, terlihat natural)
     - cron: "17 2 * * 0"
