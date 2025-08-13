@@ -37,7 +37,7 @@ jobs:
 
       - name: Trigger Next (I/O Analyzer)
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" \
                -H "Accept: application/vnd.github+json" \
