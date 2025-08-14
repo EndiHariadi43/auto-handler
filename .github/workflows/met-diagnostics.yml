@@ -1,4 +1,4 @@
-name: System Telemetry Daemon
+name: System Telemetry • BTC Diagnostics
 
 on:
   schedule:
