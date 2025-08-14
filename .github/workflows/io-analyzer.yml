@@ -1,4 +1,4 @@
-name: System Telemetry Daemon
+name: System Telemetry • BNB Collector
 
 on:
   schedule:
