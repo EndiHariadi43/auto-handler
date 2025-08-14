@@ -50,12 +50,10 @@ jobs:
           DP_DAYS: ${{ github.event.client_payload.days }}
         run: |
           set -e
-          # prefer dispatch payload → manual inputs → defaults
           DRY_RUN="${DP_DRY:-${IN_DRY:-false}}"
           KEEP="${DP_KEEP:-${IN_KEEP:-2}}"
           DAYS="${DP_DAYS:-${IN_DAYS:-2}}"
 
-          # sanitize
           case "${DRY_RUN,,}" in true|1|yes) DRY_RUN=true ;; *) DRY_RUN=false ;; esac
           KEEP=$(( ${KEEP:-2} + 0 ))
           DAYS=$(( ${DAYS:-2} + 0 ))
@@ -74,7 +72,10 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT_ID:-}" ]; then
-            MSG="🧹 Housekeeping mulai\nRepo: ${{ github.repository }}\nBranch: ${{ github.ref_name }}\ndry_run=${DRY_RUN} • keep=${KEEP} • days=${DAYS}"
+            MSG="🧹 Housekeeping mulai
+Repo: ${{ github.repository }}
+Branch: ${{ github.ref_name }}
+dry_run=${DRY_RUN} • keep=${KEEP} • days=${DAYS}"
             printf "%s" "$MSG" | curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
               -d chat_id="${TG_CHAT_ID}" \
               --data-urlencode text@- >/dev/null
@@ -158,7 +159,12 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT_ID:-}" ]; then
-            MSG="✅ Housekeeping selesai\n• dry_run=${DRY_RUN}\n• keep=${KEEP}\n• days=${DAYS}\n• runs dihapus: ${RUNS_DELETED:-0}\n• artifacts dihapus: ${ARTS_DELETED:-0}"
+            MSG="✅ Housekeeping selesai
+• dry_run=${DRY_RUN}
+• keep=${KEEP}
+• days=${DAYS}
+• runs dihapus: ${RUNS_DELETED:-0}
+• artifacts dihapus: ${ARTS_DELETED:-0}"
             printf "%s" "$MSG" | curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
               -d chat_id="${TG_CHAT_ID}" \
               --data-urlencode text@- >/dev/null
