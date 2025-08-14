@@ -80,7 +80,12 @@ jobs:
 
       - name: Cooldown
         if: always()
-        run: sleep $((RANDOM % 1200 + 300))
+        continue-on-error: true
+        run: |
+          trap 'echo "[INFO] cooldown interrupted"; exit 0' TERM INT
+          SECS=$((RANDOM % 1200 + 300))
+          echo "Cooldown ${SECS}s"
+          sleep "$SECS" || true
 
       - name: Trigger Next (Starter)
         if: always()
